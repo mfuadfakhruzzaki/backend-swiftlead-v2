@@ -148,6 +148,10 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Post("/users", c.UserHandler.Create)
 				r.Post("/auth/register", c.AuthHandler.Register)
 			})
+
+			// WebSocket route
+			r.Get("/ws", c.WSHandler.ServeWS)
+			r.Get("/ws/stats", c.WSHandler.Stats)
 		})
 	})
 }
