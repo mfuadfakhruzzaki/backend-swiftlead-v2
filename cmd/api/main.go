@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/swiftlead/backend-swiftlet/internal/app"
 	"github.com/swiftlead/backend-swiftlet/internal/config"
 	"github.com/swiftlead/backend-swiftlet/internal/db"
 	"github.com/swiftlead/backend-swiftlet/internal/router"
@@ -39,9 +39,26 @@ func main() {
 		log.Fatal("Failed to run migrations: %v", err)
 	}
 
+	// Create application container
+	container := app.NewContainer(cfg, database)
+	defer container.Close()
+
+	// Initialize optional services
+	if err := container.InitStorage(); err != nil {
+		log.Warn("MinIO storage not available: %v", err)
+	} else {
+		log.Info("MinIO storage initialized")
+	}
+
+	if err := container.ConnectMQTT(); err != nil {
+		log.Warn("MQTT broker not available: %v", err)
+	} else {
+		log.Info("MQTT broker connected")
+	}
+
 	// Setup router
 	r := router.New(cfg)
-	router.SetupRoutes(r, cfg)
+	router.SetupRoutes(r, cfg, container)
 
 	// Create HTTP server
 	server := &http.Server{
@@ -76,6 +93,3 @@ func main() {
 
 	log.Info("Server exited")
 }
-
-// Suppress unused warning
-var _ = time.Now
