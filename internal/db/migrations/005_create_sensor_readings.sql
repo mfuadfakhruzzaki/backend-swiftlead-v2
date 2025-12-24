@@ -21,8 +21,9 @@ SELECT create_hypertable('sensor_readings', 'recorded_at',
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_sensor_id ON sensor_readings(sensor_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sensor_readings_anomaly ON sensor_readings(is_anomaly) WHERE is_anomaly = TRUE;
 
--- Compression policy (compress chunks older than 7 days)
-SELECT add_compression_policy('sensor_readings', INTERVAL '7 days', if_not_exists => true);
+-- Compression policy (optional - requires TimescaleDB with compression enabled)
+-- To enable: ALTER TABLE sensor_readings SET (timescaledb.compress);
+-- SELECT add_compression_policy('sensor_readings', INTERVAL '7 days', if_not_exists => true);
 
--- Retention policy (retain data for configured days, default 365)
+-- Retention policy (optional)
 -- SELECT add_retention_policy('sensor_readings', INTERVAL '365 days', if_not_exists => true);
