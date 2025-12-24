@@ -3,7 +3,11 @@
 
 services:
   backend:
-    image: ghcr.io/swiftlead/backend-swiftlet:${VERSION:-latest}
+    # Use local build until CI/CD pushes to registry
+    # image: ghcr.io/mfuadfakhruzzaki/backend-swiftlead-v2:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: always
     ports:
       - "8080:8080"
