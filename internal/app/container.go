@@ -10,6 +10,7 @@ import (
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
 	"github.com/swiftlead/backend-swiftlet/internal/services"
 	"github.com/swiftlead/backend-swiftlet/internal/storage"
+	"github.com/swiftlead/backend-swiftlet/internal/websocket"
 )
 
 // Container holds all application dependencies
@@ -59,6 +60,10 @@ type Container struct {
 	ServiceRequestHandler *handlers.ServiceRequestHandler
 	TransactionHandler    *handlers.TransactionHandler
 	UploadHandler         *handlers.UploadHandler
+
+	// WebSocket
+	WSHub     *websocket.Hub
+	WSHandler *websocket.Handler
 }
 
 // NewContainer creates and wires all dependencies
@@ -107,6 +112,11 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	// Initialize MQTT client
 	c.MQTT = mqtt.NewClient(cfg)
 	c.MQTT.SetHandler(c.TelemetryService.ProcessSensorPayload)
+
+	// Initialize WebSocket hub
+	c.WSHub = websocket.NewHub()
+	c.WSHandler = websocket.NewHandler(c.WSHub)
+	go c.WSHub.Run()
 
 	return c
 }
