@@ -14,25 +14,30 @@ services:
     environment:
       - ENVIRONMENT=production
       - PORT=8080
-      - POSTGRES_DSN=${POSTGRES_DSN}
-      - JWT_SECRET=${JWT_SECRET}
+      - POSTGRES_DSN=postgres://swiftlet:${DB_PASSWORD:-swiftlet123}@db:5432/swiftlet?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
       - MINIO_BUCKET=${MINIO_BUCKET:-swiftlet}
-      - MINIO_USE_SSL=${MINIO_USE_SSL:-true}
-      - MQTT_BROKER=${MQTT_BROKER}
-      - MQTT_CLIENT_ID=swiftlet-backend-${HOSTNAME:-prod}
-      - AI_ENGINE_URL=${AI_ENGINE_URL}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+      - MQTT_BROKER=${MQTT_BROKER:-tcp://mosquitto:1883}
+      - MQTT_CLIENT_ID=swiftlet-backend-prod
+      - AI_ENGINE_URL=${AI_ENGINE_URL:-}
       - AI_ENGINE_ENABLED=${AI_ENGINE_ENABLED:-false}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:8080/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -49,6 +54,54 @@ services:
     networks:
       - swiftlet-network
 
+  # PostgreSQL with TimescaleDB
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: swiftlet
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-swiftlet123}
+      POSTGRES_DB: swiftlet
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U swiftlet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - swiftlet-network
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - swiftlet-network
+
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    restart: always
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    networks:
+      - swiftlet-network
+
   # Nginx Reverse Proxy with SSL
   nginx:
     image: nginx:alpine
@@ -59,7 +112,6 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - ./docker/nginx/certbot:/var/www/certbot:ro
     depends_on:
       - backend
     networks:
@@ -89,7 +141,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
     volumes:
@@ -101,6 +153,9 @@ services:
       - swiftlet-network
 
 volumes:
+  postgres_data:
+  minio_data:
+  mosquitto_data:
   prometheus_data:
   grafana_data:
 
