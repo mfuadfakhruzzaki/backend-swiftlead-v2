@@ -1,0 +1,75 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+build/
+
+# Go specific
+*.test
+*.out
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE & Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage.out
+coverage.html
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Docker
+docker-compose.override.yml
+
+# MinIO data (local development)
+minio_data/
+
+# Mosquitto data (local development)
+mosquitto_data/
+
+# Prometheus data (local development)
+prometheus_data/
+
+# Grafana data (local development)
+grafana_data/
+
+# Database dumps
+*.sql.gz
+*.dump
+
+# Secrets & Keys
+*.pem
+*.key
+secrets/
+
+# Air (hot reload)
+.air.toml
+
+# Documentation (generated)
+docs/

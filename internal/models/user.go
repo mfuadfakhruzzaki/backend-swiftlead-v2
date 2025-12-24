@@ -1,0 +1,65 @@
+package models
+
+import "time"
+
+// User represents a system user
+type User struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"`
+	Phone        *string   `json:"phone,omitempty"`
+	AvatarURL    *string   `json:"avatar_url,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// UserRole constants
+const (
+	RoleAdmin      = "admin"
+	RoleTechnician = "technician"
+	RoleFarmer     = "farmer"
+)
+
+// CreateUserRequest for creating a new user
+type CreateUserRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+	Phone    string `json:"phone,omitempty"`
+}
+
+// UpdateUserRequest for updating a user
+type UpdateUserRequest struct {
+	Name      *string `json:"name,omitempty"`
+	Phone     *string `json:"phone,omitempty"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
+// UserResponse for API responses
+type UserResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	Phone     *string   `json:"phone,omitempty"`
+	AvatarURL *string   `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ToResponse converts User to UserResponse
+func (u *User) ToResponse() *UserResponse {
+	return &UserResponse{
+		ID:        u.ID,
+		Name:      u.Name,
+		Email:     u.Email,
+		Role:      u.Role,
+		Phone:     u.Phone,
+		AvatarURL: u.AvatarURL,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
+	}
+}
