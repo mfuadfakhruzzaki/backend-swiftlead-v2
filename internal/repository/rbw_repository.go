@@ -106,7 +106,7 @@ func (r *rbwRepository) List(ctx context.Context, ownerID string, limit, offset 
 	var rbws []*models.RBW
 	var total int
 
-	countQuery := `SELECT COUNT(*) FROM rbw WHERE ($1 = '' OR owner_id = $1)`
+	countQuery := `SELECT COUNT(*) FROM rbw WHERE ($1 = '' OR owner_id::text = $1)`
 	if err := r.db.QueryRowContext(ctx, countQuery, ownerID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -115,7 +115,7 @@ func (r *rbwRepository) List(ctx context.Context, ownerID string, limit, offset 
 		SELECT id, owner_id, code, name, address, latitude, longitude, 
 		       total_floors, description, photo_url, created_at, updated_at
 		FROM rbw 
-		WHERE ($1 = '' OR owner_id = $1)
+		WHERE ($1 = '' OR owner_id::text = $1)
 		ORDER BY created_at DESC
 		LIMIT $2 OFFSET $3
 	`

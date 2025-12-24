@@ -49,9 +49,16 @@ type Container struct {
 	TransactionService    *services.TransactionService
 
 	// Handlers
-	AuthHandler *handlers.AuthHandler
-	UserHandler *handlers.UserHandler
-	RBWHandler  *handlers.RBWHandler
+	AuthHandler           *handlers.AuthHandler
+	UserHandler           *handlers.UserHandler
+	RBWHandler            *handlers.RBWHandler
+	NodeHandler           *handlers.NodeHandler
+	SensorHandler         *handlers.SensorHandler
+	AlertHandler          *handlers.AlertHandler
+	HarvestHandler        *handlers.HarvestHandler
+	ServiceRequestHandler *handlers.ServiceRequestHandler
+	TransactionHandler    *handlers.TransactionHandler
+	UploadHandler         *handlers.UploadHandler
 }
 
 // NewContainer creates and wires all dependencies
@@ -87,6 +94,12 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.AuthHandler = handlers.NewAuthHandler(c.UserService)
 	c.UserHandler = handlers.NewUserHandler(c.UserService)
 	c.RBWHandler = handlers.NewRBWHandler(c.RBWService)
+	c.NodeHandler = handlers.NewNodeHandler(c.NodeService, c.SensorService, c.RBWService)
+	c.SensorHandler = handlers.NewSensorHandler(c.SensorService, c.TelemetryService)
+	c.AlertHandler = handlers.NewAlertHandler(c.AlertService)
+	c.HarvestHandler = handlers.NewHarvestHandler(c.HarvestService)
+	c.ServiceRequestHandler = handlers.NewServiceRequestHandler(c.ServiceRequestService)
+	c.TransactionHandler = handlers.NewTransactionHandler(c.TransactionService)
 
 	// Initialize AI client
 	c.AI = ai.NewClient(cfg.AIEngineURL, cfg.AIEngineTimeout, cfg.AIEngineEnabled)
@@ -100,11 +113,13 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 
 // InitStorage initializes MinIO storage (optional, may fail)
 func (c *Container) InitStorage() error {
-	storage, err := storage.NewMinIOClient(c.Config)
+	s, err := storage.NewMinIOClient(c.Config)
 	if err != nil {
 		return err
 	}
-	c.Storage = storage
+	c.Storage = s
+	// Initialize upload handler after storage is ready
+	c.UploadHandler = handlers.NewUploadHandler(s, c.UserService, c.RBWService, c.Config)
 	return nil
 }
 
