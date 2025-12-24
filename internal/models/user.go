@@ -63,3 +63,15 @@ func (u *User) ToResponse() *UserResponse {
 		UpdatedAt: u.UpdatedAt,
 	}
 }
+
+// LoginRequest for authentication
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// LoginResponse for authentication response
+type LoginResponse struct {
+	Token string        `json:"token"`
+	User  *UserResponse `json:"user"`
+}
