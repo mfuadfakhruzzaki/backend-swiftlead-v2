@@ -23,6 +23,11 @@ func main() {
 	log := logger.New(cfg.LogLevel)
 	logger.SetDefault(log)
 
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		log.Fatal("Invalid configuration: %v", err)
+	}
+
 	log.Info("Starting Swiftlet Backend...")
 	log.Info("Environment: %s", cfg.Env)
 

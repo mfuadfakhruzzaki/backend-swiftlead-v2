@@ -6,20 +6,47 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
+	"github.com/swiftlead/backend-swiftlet/internal/config"
 )
 
 // Handler handles WebSocket connections
 type Handler struct {
 	Hub *Hub
+	cfg *config.Config
 }
 
 // NewHandler creates a new WebSocket handler
-func NewHandler(hub *Hub) *Handler {
-	return &Handler{Hub: hub}
+func NewHandler(hub *Hub, cfg *config.Config) *Handler {
+	return &Handler{
+		Hub: hub,
+		cfg: cfg,
+	}
 }
 
 // ServeWS handles WebSocket requests
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
+	// Configure upgrader with allowed origins
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			// Allow non-browser clients (empty origin)
+			if origin == "" {
+				return true
+			}
+
+			// Check against allowed origins
+			for _, allowed := range h.cfg.CORSAllowedOrigins {
+				if allowed == "*" || allowed == origin {
+					return true
+				}
+			}
+			return false
+		},
+	}
+
 	// Get user ID from context (set by auth middleware)
 	userID := ""
 	if claims, ok := r.Context().Value("claims").(map[string]interface{}); ok {
