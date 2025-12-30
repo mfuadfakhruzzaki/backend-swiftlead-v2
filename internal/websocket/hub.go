@@ -30,6 +30,13 @@ type Message struct {
 	Timestamp time.Time       `json:"timestamp"`
 }
 
+// broadcastMessage is an internal struct to handle topic-based broadcasts
+type broadcastMessage struct {
+	topic string
+	msg   Message
+	all   bool // if true, broadcast to all
+}
+
 // Client represents a WebSocket client
 type Client struct {
 	ID            string
@@ -44,18 +51,18 @@ type Client struct {
 // Hub manages all WebSocket connections
 type Hub struct {
 	clients    map[*Client]bool
-	broadcast  chan []byte
+	broadcast  chan broadcastMessage
 	register   chan *Client
 	unregister chan *Client
 	topics     map[string]map[*Client]bool
-	mu         sync.RWMutex
+	mu         sync.RWMutex // Still needed for read-only access like GetClientCount
 }
 
 // NewHub creates a new Hub
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte, 256),
+		broadcast:  make(chan broadcastMessage, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		topics:     make(map[string]map[*Client]bool),
@@ -67,6 +74,7 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			// Lock for consistency with external readers, though this loop owns the map write access
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
@@ -81,43 +89,68 @@ func (h *Hub) Run() {
 				for topic := range client.Subscriptions {
 					if clients, ok := h.topics[topic]; ok {
 						delete(clients, client)
+						// Clean up empty topics
+						if len(clients) == 0 {
+							delete(h.topics, topic)
+						}
 					}
 				}
 			}
 			h.mu.Unlock()
 			log.Printf("[WS] Client disconnected: %s", client.ID)
 
-		case message := <-h.broadcast:
-			// Optimization: Do not hold the lock while sending.
-			// Instead, snapshot the clients list (or just the Send channels)
-			// and send in a non-blocking way or separate goroutines.
-			// For simplicity and safety in Go, we can iterate with RLock but use a non-blocking send.
-			// However, the original code used a non-blocking send inside the loop.
-			// The issue identified was holding the lock during the iteration of potentially 10k clients.
-			//
-			// Improved strategy: Copy the list of clients to slice, release lock, then iterate.
-			h.mu.RLock()
-			clients := make([]*Client, 0, len(h.clients))
-			for client := range h.clients {
-				clients = append(clients, client)
+		case bMsg := <-h.broadcast:
+			// Prepare data once
+			data, err := json.Marshal(bMsg.msg)
+			if err != nil {
+				log.Printf("[WS] Error marshaling message: %v", err)
+				continue
 			}
-			h.mu.RUnlock()
 
-			for _, client := range clients {
-				select {
-				case client.Send <- message:
-				default:
-					// Buffer full, we can drop the message or close the connection.
-					// Dropping is safer for the system than blocking.
-					// Closing the connection is aggressive but prevents slow consumers from leaking.
-					// We will log and disconnect the slow client.
-					log.Printf("[WS] Client %s buffer full, disconnecting", client.ID)
-					// Handle unregistration in a non-blocking way
-					go func(c *Client) {
-						h.unregister <- c
-					}(client)
+			// Define target clients
+			var targets map[*Client]bool
+
+			h.mu.Lock() // Lock to safely read/write maps if needed, mainly for topic map access
+			if bMsg.all {
+				targets = h.clients
+			} else {
+				if tClients, ok := h.topics[bMsg.topic]; ok {
+					targets = tClients
 				}
 			}
+
+			// Iterate and send.
+			// CRITICAL SAFETY: This loop is serialized with the unregister case above.
+			// Therefore, we are guaranteed that 'client.Send' is open because if it were closed,
+			// the client would have been removed from 'targets' (which are subset of h.clients/h.topics)
+			// in the unregister case before we got here or will be processed after we finish.
+			for client := range targets {
+				select {
+				case client.Send <- data:
+				default:
+					// Buffer full. In this serialized model, we must NOT block.
+					// We also cannot immediately unregister by sending to h.unregister channel
+					// because that would block if the channel is full (deadlock risk) or
+					// create a race if we tried to call the unregister logic directly.
+					//
+					// Best practice: Close the channel and delete immediately.
+					// Since we are IN the Run loop, we own the state.
+					log.Printf("[WS] Client %s buffer full, disconnecting", client.ID)
+
+					delete(h.clients, client)
+					close(client.Send)
+					// Cleanup topics
+					for topic := range client.Subscriptions {
+						if tClients, ok := h.topics[topic]; ok {
+							delete(tClients, client)
+							if len(tClients) == 0 {
+								delete(h.topics, topic)
+							}
+						}
+					}
+				}
+			}
+			h.mu.Unlock()
 		}
 	}
 }
@@ -146,6 +179,9 @@ func (h *Hub) Unsubscribe(client *Client, topic string) {
 
 	if clients, ok := h.topics[topic]; ok {
 		delete(clients, client)
+		if len(clients) == 0 {
+			delete(h.topics, topic)
+		}
 	}
 
 	client.mu.Lock()
@@ -157,43 +193,19 @@ func (h *Hub) Unsubscribe(client *Client, topic string) {
 
 // PublishToTopic sends a message to all clients subscribed to a topic
 func (h *Hub) PublishToTopic(topic string, msg Message) {
-	// Optimization: Same strategy as broadcast
-	h.mu.RLock()
-	clientsMap, ok := h.topics[topic]
-	if !ok {
-		h.mu.RUnlock()
-		return
-	}
-	// Copy clients
-	clients := make([]*Client, 0, len(clientsMap))
-	for client := range clientsMap {
-		clients = append(clients, client)
-	}
-	h.mu.RUnlock()
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("[WS] Error marshaling message: %v", err)
-		return
-	}
-
-	for _, client := range clients {
-		select {
-		case client.Send <- data:
-		default:
-			// Skip slow client
-		}
+	h.broadcast <- broadcastMessage{
+		topic: topic,
+		msg:   msg,
+		all:   false,
 	}
 }
 
 // BroadcastAll sends a message to all connected clients
 func (h *Hub) BroadcastAll(msg Message) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("[WS] Error marshaling message: %v", err)
-		return
+	h.broadcast <- broadcastMessage{
+		msg: msg,
+		all: true,
 	}
-	h.broadcast <- data
 }
 
 // GetClientCount returns the number of connected clients
