@@ -3,20 +3,11 @@ package websocket
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins (configure for production)
-	},
-}
 
 // MessageType represents the type of WebSocket message
 type MessageType string
@@ -97,16 +88,36 @@ func (h *Hub) Run() {
 			log.Printf("[WS] Client disconnected: %s", client.ID)
 
 		case message := <-h.broadcast:
+			// Optimization: Do not hold the lock while sending.
+			// Instead, snapshot the clients list (or just the Send channels)
+			// and send in a non-blocking way or separate goroutines.
+			// For simplicity and safety in Go, we can iterate with RLock but use a non-blocking send.
+			// However, the original code used a non-blocking send inside the loop.
+			// The issue identified was holding the lock during the iteration of potentially 10k clients.
+			//
+			// Improved strategy: Copy the list of clients to slice, release lock, then iterate.
 			h.mu.RLock()
+			clients := make([]*Client, 0, len(h.clients))
 			for client := range h.clients {
+				clients = append(clients, client)
+			}
+			h.mu.RUnlock()
+
+			for _, client := range clients {
 				select {
 				case client.Send <- message:
 				default:
-					close(client.Send)
-					delete(h.clients, client)
+					// Buffer full, we can drop the message or close the connection.
+					// Dropping is safer for the system than blocking.
+					// Closing the connection is aggressive but prevents slow consumers from leaking.
+					// We will log and disconnect the slow client.
+					log.Printf("[WS] Client %s buffer full, disconnecting", client.ID)
+					// Handle unregistration in a non-blocking way
+					go func(c *Client) {
+						h.unregister <- c
+					}(client)
 				}
 			}
-			h.mu.RUnlock()
 		}
 	}
 }
@@ -146,13 +157,19 @@ func (h *Hub) Unsubscribe(client *Client, topic string) {
 
 // PublishToTopic sends a message to all clients subscribed to a topic
 func (h *Hub) PublishToTopic(topic string, msg Message) {
+	// Optimization: Same strategy as broadcast
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	clients, ok := h.topics[topic]
+	clientsMap, ok := h.topics[topic]
 	if !ok {
+		h.mu.RUnlock()
 		return
 	}
+	// Copy clients
+	clients := make([]*Client, 0, len(clientsMap))
+	for client := range clientsMap {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -160,11 +177,11 @@ func (h *Hub) PublishToTopic(topic string, msg Message) {
 		return
 	}
 
-	for client := range clients {
+	for _, client := range clients {
 		select {
 		case client.Send <- data:
 		default:
-			// Client buffer full, skip
+			// Skip slow client
 		}
 	}
 }
