@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -84,24 +85,24 @@ func Load() *Config {
 		Debug:    getEnvBool("DEBUG", false),
 
 		// Database
-		PostgresDSN:    getEnv("POSTGRES_DSN", "host=localhost user=swiftlet password=swiftlet123 dbname=swiftlet sslmode=disable"),
+		PostgresDSN:    getEnv("POSTGRES_DSN", ""),
 		DBMaxOpenConns: getEnvInt("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns: getEnvInt("DB_MAX_IDLE_CONNS", 5),
 
 		// JWT
-		JWTSecret:          getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
 		JWTExpirationHours: getEnvInt("JWT_EXPIRATION_HOURS", 24),
 
 		// MinIO
-		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", ""),
+		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", ""),
+		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", ""),
 		MinIOBucket:    getEnv("MINIO_BUCKET", "swiftlet"),
 		MinIOUseSSL:    getEnvBool("MINIO_USE_SSL", false),
 		MinIOPublicURL: getEnv("MINIO_PUBLIC_URL", ""),
 
 		// MQTT
-		MQTTBroker:         getEnv("MQTT_BROKER", "tcp://localhost:1883"),
+		MQTTBroker:         getEnv("MQTT_BROKER", ""),
 		MQTTUsername:       getEnv("MQTT_USERNAME", ""),
 		MQTTPassword:       getEnv("MQTT_PASSWORD", ""),
 		MQTTClientID:       getEnv("MQTT_CLIENT_ID", "swiftlet-backend"),
@@ -151,6 +152,29 @@ func (c *Config) IsDevelopment() bool {
 // IsProduction returns true if running in production mode
 func (c *Config) IsProduction() bool {
 	return c.Env == "production"
+}
+
+// Validate checks that all required configuration variables are set
+func (c *Config) Validate() error {
+	if c.PostgresDSN == "" {
+		return fmt.Errorf("POSTGRES_DSN is required")
+	}
+	if c.JWTSecret == "" {
+		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if c.MinIOEndpoint == "" {
+		return fmt.Errorf("MINIO_ENDPOINT is required")
+	}
+	if c.MinIOAccessKey == "" {
+		return fmt.Errorf("MINIO_ACCESS_KEY is required")
+	}
+	if c.MinIOSecretKey == "" {
+		return fmt.Errorf("MINIO_SECRET_KEY is required")
+	}
+	if c.MQTTBroker == "" {
+		return fmt.Errorf("MQTT_BROKER is required")
+	}
+	return nil
 }
 
 // Helper functions
