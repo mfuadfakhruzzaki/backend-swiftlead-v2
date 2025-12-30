@@ -24,18 +24,18 @@ const (
 
 // CreateUserRequest for creating a new user
 type CreateUserRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+	Name     string `json:"name" validate:"required,min=2,max=100"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+	Role     string `json:"role" validate:"required,oneof=admin technician farmer"`
 	Phone    string `json:"phone,omitempty"`
 }
 
 // UpdateUserRequest for updating a user
 type UpdateUserRequest struct {
-	Name      *string `json:"name,omitempty"`
+	Name      *string `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	Phone     *string `json:"phone,omitempty"`
-	AvatarURL *string `json:"avatar_url,omitempty"`
+	AvatarURL *string `json:"avatar_url,omitempty" validate:"omitempty,url"`
 }
 
 // UserResponse for API responses
@@ -66,8 +66,8 @@ func (u *User) ToResponse() *UserResponse {
 
 // LoginRequest for authentication
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 // LoginResponse for authentication response

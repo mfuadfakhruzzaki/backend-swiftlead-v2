@@ -115,7 +115,7 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 
 	// Initialize WebSocket hub
 	c.WSHub = websocket.NewHub()
-	c.WSHandler = websocket.NewHandler(c.WSHub)
+	c.WSHandler = websocket.NewHandler(c.WSHub, cfg)
 	go c.WSHub.Run()
 
 	return c

@@ -13,6 +13,7 @@ import (
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
 	"github.com/swiftlead/backend-swiftlet/internal/services"
 	"github.com/swiftlead/backend-swiftlet/pkg/response"
+	"github.com/swiftlead/backend-swiftlet/pkg/validator"
 )
 
 // AuthHandler handles authentication endpoints
@@ -29,6 +30,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
 		return
 	}
 
@@ -53,6 +59,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
 		return
 	}
 
@@ -109,6 +120,11 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+
 	user, err := h.userService.Update(r.Context(), claims.UserID, &req)
 	if err != nil {
 		response.InternalError(w, "Failed to update user")
@@ -154,6 +170,11 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
 		return
 	}
 

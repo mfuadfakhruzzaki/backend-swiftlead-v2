@@ -1,0 +1,127 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\geometry{
+ a4paper,
+ total={170mm,257mm},
+ left=20mm,
+ top=20mm,
+}
+
+\title{Codebase Audit Report: Swiftlead Backend}
+\author{Jules (AI Software Engineer)}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Executive Summary}
+
+This report presents the findings of a comprehensive audit of the \texttt{backend-swiftlet} codebase. The audit covered Security, Performance, Code Quality, and Testing.
+
+\textbf{Key Findings:}
+\begin{itemize}
+    \item \textbf{Critical:} The codebase contains \textbf{zero} automated tests.
+    \item \textbf{Security:} Several high-risk configurations were identified, including permissive CORS/WebSocket origins and hardcoded secrets in default values.
+    \item \textbf{Performance:} Concurrency patterns in WebSocket and MQTT handling may lead to bottlenecks under load.
+    \item \textbf{Architecture:} The project follows a clean, standard Go project layout, but lacks input validation layers.
+\end{itemize}
+
+\section{Security Audit}
+
+\subsection{Authentication \& Authorization}
+\begin{itemize}
+    \item \textbf{JWT Implementation:} The JWT implementation uses \texttt{HS256} and correctly verifies the signing method. However, the secret key defaults to \texttt{"change-me-in-production"} in \texttt{internal/config/config.go}.
+    \item \textbf{Password Hashing:} Passwords are hashed using \texttt{bcrypt} with a cost of 10, which is standard and secure.
+\end{itemize}
+
+\subsection{Network Security}
+\begin{itemize}
+    \item \textbf{CORS Policy:} The CORS configuration allows for extensive customization via environment variables, which is good.
+    \item \textbf{WebSocket Origins:} \textbf{High Risk.} In \texttt{internal/websocket/hub.go}, the \texttt{CheckOrigin} function returns \texttt{true} indiscriminately.
+    \begin{lstlisting}[language=Go, basicstyle=\small]
+// internal/websocket/hub.go
+CheckOrigin: func(r *http.Request) bool {
+    return true // Allow all origins
+},
+    \end{lstlisting}
+    This allows any website to connect to the WebSocket server, potentially leading to Cross-Site WebSocket Hijacking (CSWSH).
+\end{itemize}
+
+\subsection{Configuration Management}
+\begin{itemize}
+    \item \textbf{Hardcoded Secrets:} The \texttt{Load()} function in \texttt{internal/config/config.go} provides fallback default values for sensitive credentials (e.g., \texttt{MinIOSecretKey}, \texttt{PostgresDSN}). If environment variables are accidentally omitted in production, the application will default to insecure known values.
+\end{itemize}
+
+\section{Performance Audit}
+
+\subsection{Concurrency \& Real-time Systems}
+\begin{itemize}
+    \item \textbf{WebSocket Hub:} The \texttt{Hub.BroadcastAll} method holds a read lock (\texttt{RLock}) while iterating through all clients.
+    \begin{lstlisting}[language=Go, basicstyle=\small]
+// internal/websocket/hub.go
+h.mu.RLock()
+for client := range h.clients {
+    select {
+    case client.Send <- message:
+    default:
+        close(client.Send)
+        delete(h.clients, client)
+    }
+}
+h.mu.RUnlock()
+    \end{lstlisting}
+    While the \texttt{select} prevents blocking on a single slow client, holding the lock prevents new clients from registering or unregistering during the broadcast. For a large number of clients, this could increase latency for connection management.
+
+    \item \textbf{MQTT Client:} The \texttt{messageHandler} in \texttt{internal/mqtt/client.go} processes messages sequentially. Although it uses a context with a timeout, high message throughput could cause a backlog if the processing logic is slow.
+\end{itemize}
+
+\subsection{Database}
+\begin{itemize}
+    \item \textbf{Driver:} The project uses \texttt{lib/pq}. While stable, it is effectively in maintenance mode. Moving to \texttt{pgx} is recommended for better performance and features.
+    \item \textbf{Connection Pooling:} Max open and idle connections are configurable, which is good practice.
+\end{itemize}
+
+\section{Code Quality \& Architecture}
+
+\subsection{Structure}
+The project follows a standard Go project layout (\texttt{cmd/}, \texttt{internal/}, \texttt{pkg/}), which promotes good separation of concerns.
+
+\subsection{Input Validation}
+There is no centralized input validation library (like \texttt{go-playground/validator}). Validation appears to be ad-hoc or implicit in JSON decoding. This increases the risk of malformed data entering the business logic.
+
+\section{Testing}
+
+\textbf{Status: Critical Failure}
+
+A search for test files (\texttt{*\_test.go}) returned \textbf{zero results}. The application has no unit tests, integration tests, or end-to-end tests. The \texttt{cmd/seed} directory contains a manual script for resetting the admin password but does not provide test data fixtures.
+
+\section{Recommendations}
+
+\begin{enumerate}
+    \item \textbf{Immediate Actions:}
+    \begin{itemize}
+        \item Create a comprehensive test suite starting with unit tests for the core logic in \texttt{internal/services} and \texttt{internal/auth}.
+        \item Restrict WebSocket origins in \texttt{internal/websocket/hub.go} to trusted domains.
+        \item Remove hardcoded secrets from default configuration values; fail fast if critical environment variables are missing.
+    \end{itemize}
+
+    \item \textbf{Short-term Improvements:}
+    \begin{itemize}
+        \item Implement structured input validation using a library.
+        \item Refactor the WebSocket Hub to use a worker pool or unbuffered channel strategy that doesn't hold the lock during broadcast.
+    \end{itemize}
+
+    \item \textbf{Long-term Goals:}
+    \begin{itemize}
+        \item Migrate from \texttt{lib/pq} to \texttt{pgx}.
+        \item Implement CI/CD pipelines to enforce testing and linting (currently only a Makefile exists).
+    \end{itemize}
+\end{enumerate}
+
+\end{document}
