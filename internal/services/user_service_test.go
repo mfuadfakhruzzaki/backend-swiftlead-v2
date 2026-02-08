@@ -60,6 +60,16 @@ func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *MockUserRepository) UpdatePassword(ctx context.Context, userID string, passwordHash string) error {
+	for _, u := range m.users {
+		if u.ID == userID {
+			u.PasswordHash = passwordHash
+			return nil
+		}
+	}
+	return repository.ErrUserNotFound
+}
+
 func (m *MockUserRepository) List(ctx context.Context, role string, limit, offset int) ([]*models.User, int, error) {
 	// Not implemented for this test
 	return nil, 0, nil

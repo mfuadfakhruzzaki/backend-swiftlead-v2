@@ -2,19 +2,23 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/swiftlead/backend-swiftlet/internal/ai"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
+	"github.com/swiftlead/backend-swiftlet/pkg/logger"
 )
 
 // HarvestService handles harvest business logic
 type HarvestService struct {
-	repo repository.HarvestRepository
+	repo     repository.HarvestRepository
+	aiClient *ai.Client
 }
 
-func NewHarvestService(repo repository.HarvestRepository) *HarvestService {
-	return &HarvestService{repo: repo}
+func NewHarvestService(repo repository.HarvestRepository, aiClient *ai.Client) *HarvestService {
+	return &HarvestService{repo: repo, aiClient: aiClient}
 }
 
 func (s *HarvestService) Create(ctx context.Context, createdBy string, req *models.CreateHarvestRequest) (*models.Harvest, error) {
@@ -37,6 +41,20 @@ func (s *HarvestService) Create(ctx context.Context, createdBy string, req *mode
 	if err == nil && lastHarvest != nil {
 		days := int(harvest.HarvestedAt.Sub(lastHarvest.HarvestedAt).Hours() / 24)
 		harvest.CycleDays = &days
+	}
+
+	// AI grade prediction if no grade provided
+	if harvest.Grade == nil || *harvest.Grade == "" {
+		if s.aiClient != nil && s.aiClient.IsEnabled() {
+			gradeResp, err := s.aiClient.PredictGrade(ctx, &ai.GradePredictionRequest{
+				RBWID: req.RBWID,
+			})
+			if err == nil && gradeResp != nil {
+				dbGrade := ai.MapGradeToDBEnum(gradeResp.Grade)
+				harvest.Grade = &dbGrade
+				logger.Info("AI predicted harvest grade: %s (confidence: %.2f)", gradeResp.Grade, gradeResp.Confidence)
+			}
+		}
 	}
 
 	if err := s.repo.Create(ctx, harvest); err != nil {
@@ -75,9 +93,17 @@ func (s *HarvestService) Update(ctx context.Context, id string, req *models.Upda
 	return harvest, nil
 }
 
+func (s *HarvestService) Delete(ctx context.Context, id string) error {
+	return s.repo.Delete(ctx, id)
+}
+
 func (s *HarvestService) List(ctx context.Context, rbwID string, page, limit int) ([]*models.Harvest, int, error) {
 	offset := (page - 1) * limit
 	return s.repo.List(ctx, rbwID, limit, offset)
+}
+
+func (s *HarvestService) GetStats(ctx context.Context, rbwID string) (*models.HarvestStats, error) {
+	return s.repo.GetStats(ctx, rbwID)
 }
 
 // ServiceRequestService handles service request business logic
@@ -181,6 +207,30 @@ func (s *TransactionService) GetByID(ctx context.Context, id string) (*models.Tr
 	return s.repo.GetByID(ctx, id)
 }
 
+func (s *TransactionService) Update(ctx context.Context, id string, req *models.UpdateTransactionRequest) (*models.Transaction, error) {
+	tx, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if req.CategoryID != nil {
+		tx.CategoryID = *req.CategoryID
+	}
+	if req.Amount != nil {
+		tx.Amount = *req.Amount
+	}
+	if req.Description != nil {
+		tx.Description = req.Description
+	}
+	if err := s.repo.Update(ctx, tx); err != nil {
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (s *TransactionService) Delete(ctx context.Context, id string) error {
+	return s.repo.Delete(ctx, id)
+}
+
 func (s *TransactionService) ListByRBW(ctx context.Context, rbwID string, page, limit int) ([]*models.Transaction, int, error) {
 	offset := (page - 1) * limit
 	return s.repo.ListByRBW(ctx, rbwID, limit, offset)
@@ -188,4 +238,78 @@ func (s *TransactionService) ListByRBW(ctx context.Context, rbwID string, page, 
 
 func (s *TransactionService) ListCategories(ctx context.Context) ([]*models.TransactionCategory, error) {
 	return s.repo.ListCategories(ctx)
+}
+
+// Category CRUD
+
+func (s *TransactionService) GetCategoryByID(ctx context.Context, id string) (*models.TransactionCategory, error) {
+	return s.repo.GetCategoryByID(ctx, id)
+}
+
+func (s *TransactionService) CreateCategory(ctx context.Context, req *models.CreateCategoryRequest) (*models.TransactionCategory, error) {
+	cat := &models.TransactionCategory{
+		Name: req.Name,
+		Type: req.Type,
+	}
+	if req.Description != "" {
+		cat.Description = &req.Description
+	}
+	if err := s.repo.CreateCategory(ctx, cat); err != nil {
+		return nil, err
+	}
+	return cat, nil
+}
+
+func (s *TransactionService) UpdateCategory(ctx context.Context, id string, req *models.UpdateCategoryRequest) (*models.TransactionCategory, error) {
+	cat, err := s.repo.GetCategoryByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if req.Name != nil {
+		cat.Name = *req.Name
+	}
+	if req.Description != nil {
+		cat.Description = req.Description
+	}
+	if err := s.repo.UpdateCategory(ctx, cat); err != nil {
+		return nil, err
+	}
+	return cat, nil
+}
+
+func (s *TransactionService) DeleteCategory(ctx context.Context, id string) error {
+	return s.repo.DeleteCategory(ctx, id)
+}
+
+// Financial Statement
+
+func (s *TransactionService) GenerateStatement(ctx context.Context, rbwID string, startDate, endDate time.Time) (*models.FinancialStatement, error) {
+	// Get summary
+	summary, err := s.repo.GetFinancialSummary(ctx, rbwID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get financial summary: %w", err)
+	}
+
+	// Get income transactions
+	incomes, _, err := s.repo.ListByRBWWithDateRange(ctx, rbwID, startDate, endDate, models.TransactionTypeIncome, 1000, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get income transactions: %w", err)
+	}
+
+	// Get expense transactions
+	expenses, _, err := s.repo.ListByRBWWithDateRange(ctx, rbwID, startDate, endDate, models.TransactionTypeExpense, 1000, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expense transactions: %w", err)
+	}
+
+	return &models.FinancialStatement{
+		RBWID:        rbwID,
+		StartDate:    startDate,
+		EndDate:      endDate,
+		TotalIncome:  summary.TotalIncome,
+		TotalExpense: summary.TotalExpense,
+		Balance:      summary.Balance,
+		Incomes:      incomes,
+		Expenses:     expenses,
+	}, nil
 }

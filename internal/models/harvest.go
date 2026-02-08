@@ -46,3 +46,13 @@ type UpdateHarvestRequest struct {
 	Grade      *string  `json:"grade,omitempty"`
 	Notes      *string  `json:"notes,omitempty"`
 }
+
+// HarvestStats represents aggregate statistics for harvests
+type HarvestStats struct {
+	TotalHarvests      int     `json:"total_harvests"`
+	TotalNests         int     `json:"total_nests"`
+	TotalWeightKg      float64 `json:"total_weight_kg"`
+	AvgNestsPerHarvest float64 `json:"avg_nests_per_harvest"`
+	AvgWeightKg        float64 `json:"avg_weight_kg"`
+	AvgCycleDays       float64 `json:"avg_cycle_days"`
+}

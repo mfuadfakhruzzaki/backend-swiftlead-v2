@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -161,6 +162,62 @@ func (h *TransactionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	response.Created(w, "Transaction created", tx)
 }
 
+// Get handles GET /transactions/{id}
+func (h *TransactionHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	tx, err := h.txService.GetByID(r.Context(), id)
+	if err != nil {
+		if err == repository.ErrTransactionNotFound {
+			response.NotFound(w, "Transaction not found")
+		} else {
+			response.InternalError(w, "Failed to get transaction")
+		}
+		return
+	}
+
+	response.Success(w, "", tx)
+}
+
+// Update handles PATCH /transactions/{id}
+func (h *TransactionHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req models.UpdateTransactionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	tx, err := h.txService.Update(r.Context(), id, &req)
+	if err != nil {
+		if err == repository.ErrTransactionNotFound {
+			response.NotFound(w, "Transaction not found")
+		} else {
+			response.InternalError(w, "Failed to update transaction")
+		}
+		return
+	}
+
+	response.Success(w, "Transaction updated", tx)
+}
+
+// Delete handles DELETE /transactions/{id}
+func (h *TransactionHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := h.txService.Delete(r.Context(), id); err != nil {
+		if err == repository.ErrTransactionNotFound {
+			response.NotFound(w, "Transaction not found")
+		} else {
+			response.InternalError(w, "Failed to delete transaction")
+		}
+		return
+	}
+
+	response.Success(w, "Transaction deleted", nil)
+}
+
 // ListCategories handles GET /transaction-categories
 func (h *TransactionHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	categories, err := h.txService.ListCategories(r.Context())
@@ -170,4 +227,84 @@ func (h *TransactionHandler) ListCategories(w http.ResponseWriter, r *http.Reque
 	}
 
 	response.Success(w, "", categories)
+}
+
+// CreateCategory handles POST /transaction-categories (admin)
+func (h *TransactionHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	var req models.CreateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	cat, err := h.txService.CreateCategory(r.Context(), &req)
+	if err != nil {
+		response.InternalError(w, "Failed to create category")
+		return
+	}
+
+	response.Created(w, "Category created", cat)
+}
+
+// UpdateCategory handles PATCH /transaction-categories/{id} (admin)
+func (h *TransactionHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req models.UpdateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	cat, err := h.txService.UpdateCategory(r.Context(), id, &req)
+	if err != nil {
+		response.InternalError(w, "Failed to update category")
+		return
+	}
+
+	response.Success(w, "Category updated", cat)
+}
+
+// DeleteCategory handles DELETE /transaction-categories/{id} (admin)
+func (h *TransactionHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := h.txService.DeleteCategory(r.Context(), id); err != nil {
+		if err == repository.ErrCategoryInUse {
+			response.Conflict(w, "Cannot delete category: still referenced by existing transactions")
+		} else {
+			response.InternalError(w, "Failed to delete category")
+		}
+		return
+	}
+
+	response.Success(w, "Category deleted", nil)
+}
+
+// GenerateStatement handles POST /financial-statements
+func (h *TransactionHandler) GenerateStatement(w http.ResponseWriter, r *http.Request) {
+	var req models.GenerateStatementRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		response.BadRequest(w, "Invalid start_date format, use YYYY-MM-DD")
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	if err != nil {
+		response.BadRequest(w, "Invalid end_date format, use YYYY-MM-DD")
+		return
+	}
+
+	statement, err := h.txService.GenerateStatement(r.Context(), req.RBWID, startDate, endDate)
+	if err != nil {
+		response.InternalError(w, "Failed to generate financial statement")
+		return
+	}
+
+	response.Success(w, "Financial statement generated", statement)
 }
