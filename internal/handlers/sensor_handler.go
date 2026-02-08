@@ -17,12 +17,14 @@ import (
 type SensorHandler struct {
 	sensorService    *services.SensorService
 	telemetryService *services.TelemetryService
+	trendCalculator  *services.SensorTrendCalculator
 }
 
-func NewSensorHandler(sensorService *services.SensorService, telemetryService *services.TelemetryService) *SensorHandler {
+func NewSensorHandler(sensorService *services.SensorService, telemetryService *services.TelemetryService, trendCalculator *services.SensorTrendCalculator) *SensorHandler {
 	return &SensorHandler{
 		sensorService:    sensorService,
 		telemetryService: telemetryService,
+		trendCalculator:  trendCalculator,
 	}
 }
 
@@ -73,10 +75,20 @@ func (h *SensorHandler) GetReadings(w http.ResponseWriter, r *http.Request) {
 	// Parse query params
 	var from, to time.Time
 	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
-		from, _ = time.Parse(time.RFC3339, fromStr)
+		var err error
+		from, err = time.Parse(time.RFC3339, fromStr)
+		if err != nil {
+			response.BadRequest(w, "Invalid 'from' format, use RFC3339 (e.g. 2025-01-01T00:00:00Z)")
+			return
+		}
 	}
 	if toStr := r.URL.Query().Get("to"); toStr != "" {
-		to, _ = time.Parse(time.RFC3339, toStr)
+		var err error
+		to, err = time.Parse(time.RFC3339, toStr)
+		if err != nil {
+			response.BadRequest(w, "Invalid 'to' format, use RFC3339 (e.g. 2025-01-01T00:00:00Z)")
+			return
+		}
 	}
 
 	_, limit := getPagination(r)
@@ -107,4 +119,36 @@ func (h *SensorHandler) CreateReading(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Created(w, "Reading created", reading)
+}
+
+// GetTrend handles GET /sensors/{sensor_id}/trend
+func (h *SensorHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
+	sensorID := chi.URLParam(r, "sensor_id")
+
+	// Get sensor to determine type
+	sensor, err := h.sensorService.GetByID(r.Context(), sensorID)
+	if err != nil {
+		if err == repository.ErrSensorNotFound {
+			response.NotFound(w, "Sensor not found")
+		} else {
+			response.InternalError(w, "Failed to get sensor")
+		}
+		return
+	}
+
+	// Parse duration (default 1h)
+	duration := 1 * time.Hour
+	if durationStr := r.URL.Query().Get("duration"); durationStr != "" {
+		if d, err := time.ParseDuration(durationStr); err == nil {
+			duration = d
+		}
+	}
+
+	trend, err := h.trendCalculator.CalculateTrend(r.Context(), sensorID, sensor.SensorType, duration)
+	if err != nil {
+		response.InternalError(w, "Failed to calculate trend")
+		return
+	}
+
+	response.Success(w, "", trend)
 }

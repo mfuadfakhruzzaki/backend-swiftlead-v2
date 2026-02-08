@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"database/sql"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/swiftlead/backend-swiftlet/internal/auth"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
@@ -78,6 +78,107 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Created(w, "User registered successfully", user.ToResponse())
+}
+
+// PublicRegister handles POST /auth/register/public (open registration as farmer)
+func (h *AuthHandler) PublicRegister(w http.ResponseWriter, r *http.Request) {
+	var req models.RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+
+	user, err := h.userService.PublicRegister(r.Context(), &req)
+	if err != nil {
+		switch err {
+		case repository.ErrUserAlreadyExists:
+			response.Conflict(w, "User with this email already exists")
+		case services.ErrWeakPassword:
+			response.BadRequest(w, "Password must contain uppercase, lowercase, digit, and special character")
+		default:
+			response.InternalError(w, "Failed to register user")
+		}
+		return
+	}
+
+	response.Created(w, "Registration successful", user.ToResponse())
+}
+
+// ChangePassword handles POST /auth/change-password
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Unauthorized(w, "User not authenticated")
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+
+	err := h.userService.ChangePassword(r.Context(), claims.UserID, req.OldPassword, req.NewPassword)
+	if err != nil {
+		switch err {
+		case services.ErrInvalidCredentials:
+			response.Unauthorized(w, "Old password is incorrect")
+		case services.ErrSamePassword:
+			response.BadRequest(w, "New password must be different from old password")
+		case services.ErrWeakPassword:
+			response.BadRequest(w, "Password must contain uppercase, lowercase, digit, and special character")
+		default:
+			response.InternalError(w, "Failed to change password")
+		}
+		return
+	}
+
+	response.Success(w, "Password changed successfully", nil)
+}
+
+// ForgotPassword handles POST /auth/forgot-password (admin resets user password)
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req models.ForgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+
+	// Generate a cryptographically random temporary password
+	tempPassword, err := generateTempPassword(12)
+	if err != nil {
+		response.InternalError(w, "Failed to generate temporary password")
+		return
+	}
+	err = h.userService.AdminResetPassword(r.Context(), req.Email, tempPassword)
+	if err != nil {
+		if err == repository.ErrUserNotFound {
+			response.NotFound(w, "User not found")
+		} else {
+			response.InternalError(w, "Failed to reset password")
+		}
+		return
+	}
+
+	response.Success(w, "Password has been reset", map[string]string{
+		"temporary_password": tempPassword,
+		"message":            "Please change the password after login",
+	})
 }
 
 // UserHandler handles user endpoints
@@ -204,6 +305,48 @@ func getPagination(r *http.Request) (page, limit int) {
 	return
 }
 
-// Suppress unused
-var _ = sql.ErrNoRows
-var _ = chi.URLParam
+// generateTempPassword creates a cryptographically random password
+// with at least one uppercase, lowercase, digit, and special character.
+func generateTempPassword(length int) (string, error) {
+	const (
+		upperChars   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		lowerChars   = "abcdefghijklmnopqrstuvwxyz"
+		digitChars   = "0123456789"
+		specialChars = "!@#$%^&*"
+		allChars     = upperChars + lowerChars + digitChars + specialChars
+	)
+
+	if length < 8 {
+		length = 8
+	}
+
+	// Ensure at least one of each required type
+	password := make([]byte, 0, length)
+	for _, charset := range []string{upperChars, lowerChars, digitChars, specialChars} {
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", fmt.Errorf("crypto/rand failed: %w", err)
+		}
+		password = append(password, charset[idx.Int64()])
+	}
+
+	// Fill the rest with random chars from the full set
+	for i := len(password); i < length; i++ {
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(allChars))))
+		if err != nil {
+			return "", fmt.Errorf("crypto/rand failed: %w", err)
+		}
+		password = append(password, allChars[idx.Int64()])
+	}
+
+	// Shuffle to avoid predictable positions
+	for i := len(password) - 1; i > 0; i-- {
+		j, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			return "", fmt.Errorf("crypto/rand failed: %w", err)
+		}
+		password[i], password[j.Int64()] = password[j.Int64()], password[i]
+	}
+
+	return string(password), nil
+}

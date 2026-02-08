@@ -47,3 +47,42 @@ type UpdateTransactionRequest struct {
 	Amount      *float64 `json:"amount,omitempty"`
 	Description *string  `json:"description,omitempty"`
 }
+
+// CreateCategoryRequest for creating a transaction category (admin)
+type CreateCategoryRequest struct {
+	Name        string `json:"name" validate:"required"`
+	Type        string `json:"type" validate:"required,oneof=income expense"`
+	Description string `json:"description,omitempty"`
+}
+
+// UpdateCategoryRequest for updating a transaction category (admin)
+type UpdateCategoryRequest struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+// FinancialSummary represents an aggregated financial summary
+type FinancialSummary struct {
+	TotalIncome  float64 `json:"total_income"`
+	TotalExpense float64 `json:"total_expense"`
+	Balance      float64 `json:"balance"`
+}
+
+// FinancialStatement represents a financial statement for a period
+type FinancialStatement struct {
+	RBWID        string         `json:"rbw_id"`
+	StartDate    time.Time      `json:"start_date"`
+	EndDate      time.Time      `json:"end_date"`
+	TotalIncome  float64        `json:"total_income"`
+	TotalExpense float64        `json:"total_expense"`
+	Balance      float64        `json:"balance"`
+	Incomes      []*Transaction `json:"incomes"`
+	Expenses     []*Transaction `json:"expenses"`
+}
+
+// GenerateStatementRequest for generating a financial statement
+type GenerateStatementRequest struct {
+	RBWID     string `json:"rbw_id" validate:"required"`
+	StartDate string `json:"start_date" validate:"required"`
+	EndDate   string `json:"end_date" validate:"required"`
+}

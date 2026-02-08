@@ -55,11 +55,15 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 		// Public routes
 		r.Group(func(r chi.Router) {
 			r.Post("/auth/login", c.AuthHandler.Login)
+			r.Post("/auth/register", c.AuthHandler.PublicRegister)
 		})
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(cfg.JWTSecret))
+
+			// Auth routes
+			r.Post("/auth/change-password", c.AuthHandler.ChangePassword)
 
 			// User routes
 			r.Get("/users/me", c.UserHandler.GetMe)
@@ -88,6 +92,11 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Delete("/{node_id}", c.NodeHandler.Delete)
 				r.Get("/{node_id}/sensors", c.NodeHandler.ListSensors)
 				r.Post("/{node_id}/sensors", c.NodeHandler.CreateSensor)
+
+				// Audio control routes
+				r.Get("/{node_id}/audio", c.AudioHandler.GetAudioState)
+				r.Patch("/{node_id}/audio", c.AudioHandler.ControlAudio)
+				r.Patch("/{node_id}/pump", c.AudioHandler.ControlPump)
 			})
 
 			// Sensor routes
@@ -96,6 +105,7 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Patch("/{sensor_id}", c.SensorHandler.Update)
 				r.Get("/{sensor_id}/readings", c.SensorHandler.GetReadings)
 				r.Post("/{sensor_id}/readings", c.SensorHandler.CreateReading)
+				r.Get("/{sensor_id}/trend", c.SensorHandler.GetTrend)
 			})
 
 			// Alert routes
@@ -113,15 +123,40 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Patch("/{id}", c.ServiceRequestHandler.Update)
 			})
 
-			// Harvest routes
+			// Harvest routes (full CRUD)
 			r.Route("/harvests", func(r chi.Router) {
 				r.Get("/", c.HarvestHandler.List)
 				r.Post("/", c.HarvestHandler.Create)
+				r.Get("/stats", c.HarvestHandler.GetStats)
+				r.Get("/{id}", c.HarvestHandler.Get)
+				r.Patch("/{id}", c.HarvestHandler.Update)
+				r.Delete("/{id}", c.HarvestHandler.Delete)
 			})
 
-			// Transaction routes
-			r.Post("/transactions", c.TransactionHandler.Create)
-			r.Get("/transaction-categories", c.TransactionHandler.ListCategories)
+			// Transaction routes (full CRUD)
+			r.Route("/transactions", func(r chi.Router) {
+				r.Post("/", c.TransactionHandler.Create)
+				r.Get("/{id}", c.TransactionHandler.Get)
+				r.Patch("/{id}", c.TransactionHandler.Update)
+				r.Delete("/{id}", c.TransactionHandler.Delete)
+			})
+
+			// Transaction category routes
+			r.Route("/transaction-categories", func(r chi.Router) {
+				r.Get("/", c.TransactionHandler.ListCategories)
+			})
+
+			// Financial statement routes
+			r.Post("/financial-statements", c.TransactionHandler.GenerateStatement)
+
+			// AI proxy routes
+			r.Route("/ai", func(r chi.Router) {
+				r.Get("/health", c.AIHandler.HealthCheck)
+				r.Post("/predict-grade", c.AIHandler.PredictGrade)
+				r.Post("/predict-pump", c.AIHandler.PredictPump)
+				r.Post("/analyze", c.AIHandler.Analyze)
+				r.Post("/anomaly-detect", c.AIHandler.AnomalyDetect)
+			})
 
 			// Upload routes (only if storage is available)
 			r.Route("/uploads", func(r chi.Router) {
@@ -146,7 +181,13 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Use(auth.RequireRole(models.RoleAdmin))
 				r.Get("/users", c.UserHandler.List)
 				r.Post("/users", c.UserHandler.Create)
-				r.Post("/auth/register", c.AuthHandler.Register)
+				r.Post("/auth/admin/register", c.AuthHandler.Register)
+				r.Post("/auth/forgot-password", c.AuthHandler.ForgotPassword)
+
+				// Admin category management
+				r.Post("/transaction-categories", c.TransactionHandler.CreateCategory)
+				r.Patch("/transaction-categories/{id}", c.TransactionHandler.UpdateCategory)
+				r.Delete("/transaction-categories/{id}", c.TransactionHandler.DeleteCategory)
 			})
 
 			// WebSocket route

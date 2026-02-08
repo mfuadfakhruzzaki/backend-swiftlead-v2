@@ -17,8 +17,10 @@ type HarvestRepository interface {
 	Create(ctx context.Context, harvest *models.Harvest) error
 	GetByID(ctx context.Context, id string) (*models.Harvest, error)
 	Update(ctx context.Context, harvest *models.Harvest) error
+	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, rbwID string, limit, offset int) ([]*models.Harvest, int, error)
 	GetLastHarvest(ctx context.Context, rbwID string, floorNo int) (*models.Harvest, error)
+	GetStats(ctx context.Context, rbwID string) (*models.HarvestStats, error)
 }
 
 type harvestRepository struct {
@@ -76,6 +78,19 @@ func (r *harvestRepository) Update(ctx context.Context, harvest *models.Harvest)
 		return ErrHarvestNotFound
 	}
 	return err
+}
+
+func (r *harvestRepository) Delete(ctx context.Context, id string) error {
+	query := `DELETE FROM harvests WHERE id = $1`
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrHarvestNotFound
+	}
+	return nil
 }
 
 func (r *harvestRepository) List(ctx context.Context, rbwID string, limit, offset int) ([]*models.Harvest, int, error) {
@@ -137,4 +152,27 @@ func (r *harvestRepository) GetLastHarvest(ctx context.Context, rbwID string, fl
 		return nil, nil
 	}
 	return harvest, err
+}
+
+func (r *harvestRepository) GetStats(ctx context.Context, rbwID string) (*models.HarvestStats, error) {
+	query := `
+		SELECT 
+			COUNT(*) as total_harvests,
+			COALESCE(SUM(nests_count), 0) as total_nests,
+			COALESCE(SUM(weight_kg), 0) as total_weight_kg,
+			COALESCE(AVG(nests_count), 0) as avg_nests,
+			COALESCE(AVG(weight_kg), 0) as avg_weight_kg,
+			COALESCE(AVG(cycle_days), 0) as avg_cycle_days
+		FROM harvests 
+		WHERE ($1 = '' OR rbw_id = $1)
+	`
+	stats := &models.HarvestStats{}
+	err := r.db.QueryRowContext(ctx, query, rbwID).Scan(
+		&stats.TotalHarvests, &stats.TotalNests, &stats.TotalWeightKg,
+		&stats.AvgNestsPerHarvest, &stats.AvgWeightKg, &stats.AvgCycleDays,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return stats, nil
 }

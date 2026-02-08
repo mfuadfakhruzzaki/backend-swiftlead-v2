@@ -48,6 +48,8 @@ type Container struct {
 	HarvestService        *services.HarvestService
 	ServiceRequestService *services.ServiceRequestService
 	TransactionService    *services.TransactionService
+	AudioService          *services.AudioService
+	SensorTrendCalculator *services.SensorTrendCalculator
 
 	// Handlers
 	AuthHandler           *handlers.AuthHandler
@@ -60,6 +62,8 @@ type Container struct {
 	ServiceRequestHandler *handlers.ServiceRequestHandler
 	TransactionHandler    *handlers.TransactionHandler
 	UploadHandler         *handlers.UploadHandler
+	AudioHandler          *handlers.AudioHandler
+	AIHandler             *handlers.AIHandler
 
 	// WebSocket
 	WSHub     *websocket.Hub
@@ -84,34 +88,40 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.ServiceRequestRepo = repository.NewServiceRequestRepository(db)
 	c.TransactionRepo = repository.NewTransactionRepository(db)
 
-	// Initialize services
+	// Initialize AI client
+	c.AI = ai.NewClient(cfg.AIEngineURL, cfg.AIEngineTimeout, cfg.AIEngineEnabled)
+
+	// Initialize MQTT client
+	c.MQTT = mqtt.NewClient(cfg)
+
+	// Initialize services (with AI integration)
 	c.UserService = services.NewUserService(c.UserRepo, cfg.JWTSecret, cfg.JWTExpirationHours)
 	c.RBWService = services.NewRBWService(c.RBWRepo)
 	c.NodeService = services.NewNodeService(c.NodeRepo)
 	c.SensorService = services.NewSensorService(c.SensorRepo)
 	c.AlertService = services.NewAlertService(c.AlertRepo)
-	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, cfg)
-	c.HarvestService = services.NewHarvestService(c.HarvestRepo)
+	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, c.AI, cfg)
+	c.HarvestService = services.NewHarvestService(c.HarvestRepo, c.AI)
 	c.ServiceRequestService = services.NewServiceRequestService(c.ServiceRequestRepo)
 	c.TransactionService = services.NewTransactionService(c.TransactionRepo)
+	c.AudioService = services.NewAudioService(c.MQTT, c.NodeRepo)
+	c.SensorTrendCalculator = services.NewSensorTrendCalculator(c.TelemetryRepo)
+
+	// Set MQTT handler
+	c.MQTT.SetHandler(c.TelemetryService.ProcessSensorPayload)
 
 	// Initialize handlers
 	c.AuthHandler = handlers.NewAuthHandler(c.UserService)
 	c.UserHandler = handlers.NewUserHandler(c.UserService)
 	c.RBWHandler = handlers.NewRBWHandler(c.RBWService)
 	c.NodeHandler = handlers.NewNodeHandler(c.NodeService, c.SensorService, c.RBWService)
-	c.SensorHandler = handlers.NewSensorHandler(c.SensorService, c.TelemetryService)
+	c.SensorHandler = handlers.NewSensorHandler(c.SensorService, c.TelemetryService, c.SensorTrendCalculator)
 	c.AlertHandler = handlers.NewAlertHandler(c.AlertService)
 	c.HarvestHandler = handlers.NewHarvestHandler(c.HarvestService)
 	c.ServiceRequestHandler = handlers.NewServiceRequestHandler(c.ServiceRequestService)
 	c.TransactionHandler = handlers.NewTransactionHandler(c.TransactionService)
-
-	// Initialize AI client
-	c.AI = ai.NewClient(cfg.AIEngineURL, cfg.AIEngineTimeout, cfg.AIEngineEnabled)
-
-	// Initialize MQTT client
-	c.MQTT = mqtt.NewClient(cfg)
-	c.MQTT.SetHandler(c.TelemetryService.ProcessSensorPayload)
+	c.AudioHandler = handlers.NewAudioHandler(c.AudioService)
+	c.AIHandler = handlers.NewAIHandler(c.AI)
 
 	// Initialize WebSocket hub
 	c.WSHub = websocket.NewHub()

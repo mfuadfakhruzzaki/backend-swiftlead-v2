@@ -4,9 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/swiftlead/backend-swiftlet/internal/ai"
 	"github.com/swiftlead/backend-swiftlet/internal/config"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
+	"github.com/swiftlead/backend-swiftlet/pkg/logger"
 )
 
 // TelemetryService handles sensor data ingestion
@@ -15,6 +17,7 @@ type TelemetryService struct {
 	sensorRepo    repository.SensorRepository
 	telemetryRepo repository.TelemetryRepository
 	alertRepo     repository.AlertRepository
+	aiClient      *ai.Client
 	cfg           *config.Config
 }
 
@@ -24,6 +27,7 @@ func NewTelemetryService(
 	sensorRepo repository.SensorRepository,
 	telemetryRepo repository.TelemetryRepository,
 	alertRepo repository.AlertRepository,
+	aiClient *ai.Client,
 	cfg *config.Config,
 ) *TelemetryService {
 	return &TelemetryService{
@@ -31,6 +35,7 @@ func NewTelemetryService(
 		sensorRepo:    sensorRepo,
 		telemetryRepo: telemetryRepo,
 		alertRepo:     alertRepo,
+		aiClient:      aiClient,
 		cfg:           cfg,
 	}
 }
@@ -88,26 +93,49 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 			continue
 		}
 
+		// AI anomaly detection
+		isAnomaly := alertType != ""
+		if s.aiClient != nil && s.aiClient.IsEnabled() {
+			anomalyReq := &ai.AnomalyRequest{
+				SensorID:   sensor.ID,
+				SensorType: sensor.SensorType,
+				RBWID:      node.RBWID,
+				NodeID:     node.ID,
+				RecordedAt: recordedAt,
+				Value:      value,
+			}
+			anomalyResp, err := s.aiClient.DetectAnomaly(ctx, anomalyReq)
+			if err == nil && anomalyResp.IsAnomaly {
+				isAnomaly = true
+				if alertType == "" {
+					alertType = models.AlertTypeAIAnomaly
+				}
+				logger.Info("AI anomaly detected: sensor=%s value=%.2f score=%.2f", sensor.ID, value, anomalyResp.Score)
+			}
+		}
+
 		// Create reading
 		reading := &models.SensorReading{
 			SensorID:   sensor.ID,
 			RecordedAt: recordedAt,
 			Value:      value,
-			IsAnomaly:  alertType != "",
+			IsAnomaly:  isAnomaly,
 		}
 		if err := s.telemetryRepo.CreateReading(ctx, reading); err != nil {
 			return err
 		}
 
-		// Create alert if threshold exceeded
+		// Create alert if threshold exceeded or AI anomaly detected
 		if alertType != "" {
+			severity := s.getSeverity(alertType, value)
+			msg := s.getAlertMessage(alertType, value)
 			alert := &models.Alert{
 				RBWID:     node.RBWID,
 				NodeID:    &node.ID,
 				SensorID:  &sensor.ID,
 				AlertType: alertType,
-				Severity:  s.getSeverity(alertType, value),
-				Message:   s.getAlertMessage(alertType, value),
+				Severity:  severity,
+				Message:   msg,
 			}
 			if err := s.alertRepo.Create(ctx, alert); err != nil {
 				return err
@@ -163,7 +191,7 @@ func (s *TelemetryService) getSeverity(alertType string, value float64) int {
 	}
 }
 
-func (s *TelemetryService) getAlertMessage(alertType string, value float64) *string {
+func (s *TelemetryService) getAlertMessage(alertType string, _ float64) *string {
 	var msg string
 	switch alertType {
 	case models.AlertTypeTempHigh:
@@ -176,6 +204,13 @@ func (s *TelemetryService) getAlertMessage(alertType string, value float64) *str
 		msg = "Humidity too low"
 	case models.AlertTypeAmmoniaHigh:
 		msg = "Ammonia level high, improve ventilation"
+	case models.AlertTypeAIAnomaly:
+		msg = "AI detected anomalous sensor reading"
 	}
 	return &msg
+}
+
+// GetLatestReading retrieves the latest reading for a sensor
+func (s *TelemetryService) GetLatestReading(ctx context.Context, sensorID string) (*models.SensorReading, error) {
+	return s.telemetryRepo.GetLatestReading(ctx, sensorID)
 }

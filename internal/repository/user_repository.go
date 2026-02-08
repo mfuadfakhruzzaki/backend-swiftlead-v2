@@ -19,6 +19,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
+	UpdatePassword(ctx context.Context, userID, passwordHash string) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, role string, limit, offset int) ([]*models.User, int, error)
 }
@@ -104,6 +105,19 @@ func (r *userRepository) Update(ctx context.Context, user *models.User) error {
 		return ErrUserNotFound
 	}
 	return err
+}
+
+func (r *userRepository) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
+	result, err := r.db.ExecContext(ctx, query, passwordHash, userID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *userRepository) Delete(ctx context.Context, id string) error {
