@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 )
@@ -90,29 +91,48 @@ func (r *alertRepository) List(ctx context.Context, rbwID string, isRead, resolv
 	var alerts []*models.Alert
 	var total int
 
-	// Build dynamic query with proper NULL handling
-	// Use CASE to avoid UUID cast when rbwID is empty
-	countQuery := `
-		SELECT COUNT(*) FROM alerts 
-		WHERE (CASE WHEN $1 = '' THEN TRUE ELSE rbw_id = $1::uuid END)
-		AND ($2 IS NULL OR is_read = $2)
-		AND ($3 IS NULL OR (resolved_at IS NOT NULL) = $3)
-	`
-	if err := r.db.QueryRowContext(ctx, countQuery, rbwID, isRead, resolved).Scan(&total); err != nil {
+	// Build query dynamically based on filters
+	baseWhere := "WHERE 1=1"
+	args := []interface{}{}
+	argNum := 1
+
+	if rbwID != "" {
+		baseWhere += fmt.Sprintf(" AND rbw_id = $%d", argNum)
+		args = append(args, rbwID)
+		argNum++
+	}
+
+	if isRead != nil {
+		baseWhere += fmt.Sprintf(" AND is_read = $%d", argNum)
+		args = append(args, *isRead)
+		argNum++
+	}
+
+	if resolved != nil {
+		if *resolved {
+			baseWhere += " AND resolved_at IS NOT NULL"
+		} else {
+			baseWhere += " AND resolved_at IS NULL"
+		}
+	}
+
+	// Count query
+	countQuery := "SELECT COUNT(*) FROM alerts " + baseWhere
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	query := `
+	// Data query with pagination
+	query := fmt.Sprintf(`
 		SELECT id, rbw_id, node_id, sensor_id, alert_type, severity, message,
 		       is_read, resolved_at, resolved_by, created_at
-		FROM alerts 
-		WHERE (CASE WHEN $1 = '' THEN TRUE ELSE rbw_id = $1::uuid END)
-		AND ($2 IS NULL OR is_read = $2)
-		AND ($3 IS NULL OR (resolved_at IS NOT NULL) = $3)
+		FROM alerts %s
 		ORDER BY created_at DESC
-		LIMIT $4 OFFSET $5
-	`
-	rows, err := r.db.QueryContext(ctx, query, rbwID, isRead, resolved, limit, offset)
+		LIMIT $%d OFFSET $%d
+	`, baseWhere, argNum, argNum+1)
+
+	args = append(args, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}
