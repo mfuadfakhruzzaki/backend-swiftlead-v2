@@ -162,6 +162,8 @@ services:
       - GF_SERVER_ROOT_URL=https://monitoring.swiftlead.fuadfakhruz.com
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=Host(`monitoring.swiftlead.fuadfakhruz.com`)"
