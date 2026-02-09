@@ -41,6 +41,11 @@ type Config struct {
 	MQTTTopicPrefix    string
 	MQTTKeepAlive      int
 	MQTTConnectTimeout int
+	MQTTUseTLS         bool
+	MQTTCACert         string // Path to CA certificate
+	MQTTClientCert     string // Path to client certificate
+	MQTTClientKey      string // Path to client private key
+	MQTTSkipVerify     bool   // Skip server certificate verification
 
 	// AI Engine
 	AIEngineURL     string
@@ -109,6 +114,11 @@ func Load() *Config {
 		MQTTTopicPrefix:    getEnv("MQTT_TOPIC_PREFIX", "swiftlead/tel"),
 		MQTTKeepAlive:      getEnvInt("MQTT_KEEPALIVE", 30),
 		MQTTConnectTimeout: getEnvInt("MQTT_CONNECT_TIMEOUT", 5),
+		MQTTUseTLS:         getEnvBool("MQTT_USE_TLS", false),
+		MQTTCACert:         getEnv("MQTT_CA_CERT", ""),
+		MQTTClientCert:     getEnv("MQTT_CLIENT_CERT", ""),
+		MQTTClientKey:      getEnv("MQTT_CLIENT_KEY", ""),
+		MQTTSkipVerify:     getEnvBool("MQTT_SKIP_VERIFY", false),
 
 		// AI Engine
 		AIEngineURL:     getEnv("AI_ENGINE_URL", "http://localhost:8000"),
