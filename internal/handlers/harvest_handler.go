@@ -11,6 +11,7 @@ import (
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
 	"github.com/swiftlead/backend-swiftlet/internal/services"
 	"github.com/swiftlead/backend-swiftlet/pkg/response"
+	"github.com/swiftlead/backend-swiftlet/pkg/validator"
 )
 
 // HarvestHandler handles harvest endpoints
@@ -67,6 +68,11 @@ func (h *HarvestHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateHarvestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	if err := validator.Validate(req); err != nil {
+		response.BadRequest(w, err.Error())
 		return
 	}
 

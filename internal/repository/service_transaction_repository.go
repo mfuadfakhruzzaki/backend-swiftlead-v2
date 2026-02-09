@@ -84,10 +84,10 @@ func (r *serviceRequestRepository) List(ctx context.Context, rbwID, requestBy, a
 
 	countQuery := `
 		SELECT COUNT(*) FROM service_requests 
-		WHERE ($1 = '' OR rbw_id = $1)
-		AND ($2 = '' OR request_by = $2)
-		AND ($3 = '' OR assigned_to = $3)
-		AND ($4 = '' OR status = $4)
+		WHERE (NULLIF($1, '') IS NULL OR rbw_id = NULLIF($1, '')::uuid)
+		AND (NULLIF($2, '') IS NULL OR request_by = NULLIF($2, '')::uuid)
+		AND (NULLIF($3, '') IS NULL OR assigned_to = NULLIF($3, '')::uuid)
+		AND (NULLIF($4, '') IS NULL OR status = $4)
 	`
 	if err := r.db.QueryRowContext(ctx, countQuery, rbwID, requestBy, assignedTo, status).Scan(&total); err != nil {
 		return nil, 0, err
@@ -98,10 +98,10 @@ func (r *serviceRequestRepository) List(ctx context.Context, rbwID, requestBy, a
 		       request_date, schedule_date, uninstall_date, issue, resolution, notes,
 		       created_at, updated_at
 		FROM service_requests 
-		WHERE ($1 = '' OR rbw_id = $1)
-		AND ($2 = '' OR request_by = $2)
-		AND ($3 = '' OR assigned_to = $3)
-		AND ($4 = '' OR status = $4)
+		WHERE (NULLIF($1, '') IS NULL OR rbw_id = NULLIF($1, '')::uuid)
+		AND (NULLIF($2, '') IS NULL OR request_by = NULLIF($2, '')::uuid)
+		AND (NULLIF($3, '') IS NULL OR assigned_to = NULLIF($3, '')::uuid)
+		AND (NULLIF($4, '') IS NULL OR status = $4)
 		ORDER BY created_at DESC
 		LIMIT $5 OFFSET $6
 	`
