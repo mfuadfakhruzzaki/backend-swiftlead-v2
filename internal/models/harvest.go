@@ -28,13 +28,13 @@ const (
 
 // CreateHarvestRequest for creating a harvest
 type CreateHarvestRequest struct {
-	RBWID       string    `json:"rbw_id"`
+	RBWID       string    `json:"rbw_id" validate:"required"`
 	NodeID      *string   `json:"node_id,omitempty"`
-	FloorNo     int       `json:"floor_no"`
-	HarvestedAt time.Time `json:"harvested_at"`
-	NestsCount  int       `json:"nests_count"`
+	FloorNo     int       `json:"floor_no" validate:"required,min=1"`
+	HarvestedAt time.Time `json:"harvested_at" validate:"required"`
+	NestsCount  int       `json:"nests_count" validate:"min=0"`
 	WeightKg    *float64  `json:"weight_kg,omitempty"`
-	Grade       *string   `json:"grade,omitempty"`
+	Grade       *string   `json:"grade,omitempty" validate:"omitempty,oneof=good medium poor"`
 	Notes       string    `json:"notes,omitempty"`
 }
 

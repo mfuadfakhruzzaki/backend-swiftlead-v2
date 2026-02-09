@@ -97,7 +97,7 @@ func (r *harvestRepository) List(ctx context.Context, rbwID string, limit, offse
 	var harvests []*models.Harvest
 	var total int
 
-	countQuery := `SELECT COUNT(*) FROM harvests WHERE ($1 = '' OR rbw_id = $1)`
+	countQuery := `SELECT COUNT(*) FROM harvests WHERE (NULLIF($1, '') IS NULL OR rbw_id = NULLIF($1, '')::uuid)`
 	if err := r.db.QueryRowContext(ctx, countQuery, rbwID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -106,7 +106,7 @@ func (r *harvestRepository) List(ctx context.Context, rbwID string, limit, offse
 		SELECT id, rbw_id, node_id, floor_no, harvested_at, nests_count, weight_kg,
 		       grade, notes, created_by, cycle_days, created_at, updated_at
 		FROM harvests 
-		WHERE ($1 = '' OR rbw_id = $1)
+		WHERE (NULLIF($1, '') IS NULL OR rbw_id = NULLIF($1, '')::uuid)
 		ORDER BY harvested_at DESC
 		LIMIT $2 OFFSET $3
 	`
@@ -164,7 +164,7 @@ func (r *harvestRepository) GetStats(ctx context.Context, rbwID string) (*models
 			COALESCE(AVG(weight_kg), 0) as avg_weight_kg,
 			COALESCE(AVG(cycle_days), 0) as avg_cycle_days
 		FROM harvests 
-		WHERE ($1 = '' OR rbw_id = $1)
+		WHERE (NULLIF($1, '') IS NULL OR rbw_id = NULLIF($1, '')::uuid)
 	`
 	stats := &models.HarvestStats{}
 	err := r.db.QueryRowContext(ctx, query, rbwID).Scan(
