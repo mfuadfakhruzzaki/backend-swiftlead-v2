@@ -90,12 +90,13 @@ func (r *alertRepository) List(ctx context.Context, rbwID string, isRead, resolv
 	var alerts []*models.Alert
 	var total int
 
-	// Build dynamic query
+	// Build dynamic query with proper NULL handling
+	// Use CASE to avoid UUID cast when rbwID is empty
 	countQuery := `
 		SELECT COUNT(*) FROM alerts 
-		WHERE ($1 = '' OR rbw_id = $1)
-		AND ($2::boolean IS NULL OR is_read = $2)
-		AND ($3::boolean IS NULL OR (resolved_at IS NOT NULL) = $3)
+		WHERE (CASE WHEN $1 = '' THEN TRUE ELSE rbw_id = $1::uuid END)
+		AND ($2 IS NULL OR is_read = $2)
+		AND ($3 IS NULL OR (resolved_at IS NOT NULL) = $3)
 	`
 	if err := r.db.QueryRowContext(ctx, countQuery, rbwID, isRead, resolved).Scan(&total); err != nil {
 		return nil, 0, err
@@ -105,9 +106,9 @@ func (r *alertRepository) List(ctx context.Context, rbwID string, isRead, resolv
 		SELECT id, rbw_id, node_id, sensor_id, alert_type, severity, message,
 		       is_read, resolved_at, resolved_by, created_at
 		FROM alerts 
-		WHERE ($1 = '' OR rbw_id = $1)
-		AND ($2::boolean IS NULL OR is_read = $2)
-		AND ($3::boolean IS NULL OR (resolved_at IS NOT NULL) = $3)
+		WHERE (CASE WHEN $1 = '' THEN TRUE ELSE rbw_id = $1::uuid END)
+		AND ($2 IS NULL OR is_read = $2)
+		AND ($3 IS NULL OR (resolved_at IS NOT NULL) = $3)
 		ORDER BY created_at DESC
 		LIMIT $4 OFFSET $5
 	`

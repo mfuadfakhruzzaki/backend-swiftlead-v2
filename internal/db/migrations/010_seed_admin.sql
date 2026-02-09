@@ -7,7 +7,7 @@ INSERT INTO users (name, email, password_hash, role, phone)
 VALUES (
     'Admin', 
     'admin@swiftlead.id', 
-    '$2a$10$5kBFmC8HF0BRX8tL4H.7/.mXx.r4YkZpQwBaWzPJKLNq.xD4LnWlq', 
+    '$2a$10$.iMchHPdgsV0Arnssr4/ROMFaU0Se9KxmdSAXRKAZNrDwnNhJd6PK', 
     'admin', 
     '+6281234567890'
 )
