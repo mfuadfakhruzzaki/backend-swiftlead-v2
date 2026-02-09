@@ -2,8 +2,11 @@ package mqtt
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
@@ -48,6 +51,16 @@ func (c *Client) Connect() error {
 	if c.cfg.MQTTUsername != "" {
 		opts.SetUsername(c.cfg.MQTTUsername)
 		opts.SetPassword(c.cfg.MQTTPassword)
+	}
+
+	// Configure TLS if enabled
+	if c.cfg.MQTTUseTLS {
+		tlsConfig, err := c.newTLSConfig()
+		if err != nil {
+			return fmt.Errorf("failed to configure MQTT TLS: %w", err)
+		}
+		opts.SetTLSConfig(tlsConfig)
+		logger.Info("MQTT TLS enabled")
 	}
 
 	opts.SetOnConnectHandler(c.onConnect)
@@ -106,6 +119,38 @@ func (c *Client) PublishPumpCommand(value int) error {
 		"value":  value,
 	}
 	return c.Publish("swiftlead/cmd/pump/set", payload)
+}
+
+// newTLSConfig creates a TLS configuration for the MQTT connection.
+// Supports CA certificate, mutual TLS (client cert + key), and skip-verify.
+func (c *Client) newTLSConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.cfg.MQTTSkipVerify,
+	}
+
+	// Load CA certificate if provided
+	if c.cfg.MQTTCACert != "" {
+		caCert, err := os.ReadFile(c.cfg.MQTTCACert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA cert %s: %w", c.cfg.MQTTCACert, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA cert %s", c.cfg.MQTTCACert)
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	// Load client certificate and key for mutual TLS
+	if c.cfg.MQTTClientCert != "" && c.cfg.MQTTClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(c.cfg.MQTTClientCert, c.cfg.MQTTClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client cert/key: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return tlsConfig, nil
 }
 
 // Disconnect closes the MQTT connection

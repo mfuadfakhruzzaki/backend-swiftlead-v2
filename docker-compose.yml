@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   backend:
@@ -38,7 +38,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U swiftlet" ]
+      test: ["CMD-SHELL", "pg_isready -U swiftlet"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,9 +63,11 @@ services:
     image: eclipse-mosquitto:2.0
     ports:
       - "1883:1883"
+      - "8883:8883"
       - "9002:9001"
     volumes:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./docker/mosquitto/certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
     networks:
       - swiftlet-network
@@ -97,7 +99,6 @@ volumes:
   mosquitto_data:
   prometheus_data:
   grafana_data:
-
 
 networks:
   swiftlet-network:
