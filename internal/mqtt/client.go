@@ -12,6 +12,7 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"github.com/swiftlead/backend-swiftlet/internal/config"
+	"github.com/swiftlead/backend-swiftlet/internal/metrics"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 	"github.com/swiftlead/backend-swiftlet/pkg/logger"
 )
@@ -157,6 +158,7 @@ func (c *Client) newTLSConfig() (*tls.Config, error) {
 func (c *Client) Disconnect() {
 	if c.client != nil && c.client.IsConnected() {
 		c.client.Disconnect(1000)
+		metrics.MQTTConnectionStatus.Set(0)
 		logger.Info("Disconnected from MQTT broker")
 	}
 }
@@ -169,6 +171,7 @@ func (c *Client) IsConnected() bool {
 // Callbacks
 func (c *Client) onConnect(client pahomqtt.Client) {
 	logger.Info("MQTT connected, subscribing to topics...")
+	metrics.MQTTConnectionStatus.Set(1)
 	if err := c.Subscribe(); err != nil {
 		logger.Error("Failed to subscribe: %v", err)
 	}
@@ -176,6 +179,7 @@ func (c *Client) onConnect(client pahomqtt.Client) {
 
 func (c *Client) onConnectionLost(client pahomqtt.Client, err error) {
 	logger.Warn("MQTT connection lost: %v", err)
+	metrics.MQTTConnectionStatus.Set(0)
 }
 
 func (c *Client) onReconnecting(client pahomqtt.Client, opts *pahomqtt.ClientOptions) {
@@ -185,10 +189,12 @@ func (c *Client) onReconnecting(client pahomqtt.Client, opts *pahomqtt.ClientOpt
 // messageHandler processes incoming MQTT messages
 func (c *Client) messageHandler(client pahomqtt.Client, msg pahomqtt.Message) {
 	logger.Debug("Received MQTT message on topic: %s", msg.Topic())
+	metrics.MQTTMessagesReceived.Inc()
 
 	var payload models.SensorPayload
 	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
 		logger.Error("Failed to parse MQTT message: %v", err)
+		metrics.MQTTMessageErrors.Inc()
 		return
 	}
 
@@ -198,6 +204,7 @@ func (c *Client) messageHandler(client pahomqtt.Client, msg pahomqtt.Message) {
 
 		if err := c.handler(ctx, &payload); err != nil {
 			logger.Error("Failed to process sensor payload: %v", err)
+			metrics.MQTTMessageErrors.Inc()
 		}
 	}
 }
