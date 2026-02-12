@@ -19,7 +19,7 @@ INSERT INTO users (name, email, password_hash, role, phone)
 VALUES (
     'Technician', 
     'technician@swiftlead.id', 
-    '$2a$10$eAOS2Hz1tiyVOBsSkhstje2n0pBknCVIGs/H518RPTUx3TyxSCkFG', 
+    '$2a$10$Q.EXEgeaVFh4C3PARPLi4e1p8WrDVvkZf0iT6qOYWF5Y.rNspCPKK', 
     'technician', 
     '+6281234567891'
 )
@@ -31,7 +31,7 @@ INSERT INTO users (name, email, password_hash, role, phone)
 VALUES (
     'Farmer', 
     'farmer@swiftlead.id', 
-    '$2a$10$/538nfqC6gYWHWw2dLymKeeQdMeJkltI1JyIFUdxlhecnpAeC6HPW', 
+    '$2a$10$uiJ7fFBHwlnxCHwwLzCbMuav4fDOJH6JLf1PtkMRtxY9U8OiMsywS', 
     'farmer', 
     '+6281234567892'
 )
