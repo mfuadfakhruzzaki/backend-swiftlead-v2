@@ -29,7 +29,7 @@ services:
       - MQTT_CLIENT_ID=swiftlet-backend-prod
       - AI_ENGINE_URL=${AI_ENGINE_URL:-}
       - AI_ENGINE_ENABLED=${AI_ENGINE_ENABLED:-false}
-      - CORS_ALLOWED_ORIGINS=https://swiftlead.fuadfakhruz.com
+      - CORS_ALLOWED_ORIGINS=https://swiftlead.fuadfakhruz.com,https://smart-swiftlet-monitoring.vercel.app
       - LOG_LEVEL=info
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
