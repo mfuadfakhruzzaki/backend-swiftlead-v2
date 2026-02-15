@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -51,23 +50,6 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[WS] Incoming headers: Connection=%q, Upgrade=%q, Sec-WebSocket-Key=%q, Sec-WebSocket-Version=%q",
 		r.Header.Get("Connection"), r.Header.Get("Upgrade"),
 		r.Header.Get("Sec-WebSocket-Key"), r.Header.Get("Sec-WebSocket-Version"))
-
-	// Workaround: reverse proxies (Traefik) using HTTP/2 may strip ALL
-	// hop-by-hop headers including Connection, Upgrade, and Sec-WebSocket-*.
-	// Since this route ONLY serves WebSocket, we unconditionally restore
-	// the required headers if they are missing.
-	if !strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") {
-		r.Header.Set("Connection", "Upgrade")
-	}
-	if strings.ToLower(r.Header.Get("Upgrade")) != "websocket" {
-		r.Header.Set("Upgrade", "websocket")
-	}
-	if r.Header.Get("Sec-WebSocket-Version") == "" {
-		r.Header.Set("Sec-WebSocket-Version", "13")
-	}
-	if r.Header.Get("Sec-WebSocket-Key") == "" {
-		r.Header.Set("Sec-WebSocket-Key", "dGVzdHdlYnNvY2tldA==")
-	}
 
 	// Get user ID from context (set by auth middleware)
 	userID := ""
