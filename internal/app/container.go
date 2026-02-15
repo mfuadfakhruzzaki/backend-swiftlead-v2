@@ -94,13 +94,18 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	// Initialize MQTT client
 	c.MQTT = mqtt.NewClient(cfg)
 
+	// Initialize WebSocket hub (before services, so Hub can be injected)
+	c.WSHub = websocket.NewHub()
+	c.WSHandler = websocket.NewHandler(c.WSHub, cfg)
+	go c.WSHub.Run()
+
 	// Initialize services (with AI integration)
 	c.UserService = services.NewUserService(c.UserRepo, cfg.JWTSecret, cfg.JWTExpirationHours)
 	c.RBWService = services.NewRBWService(c.RBWRepo)
 	c.NodeService = services.NewNodeService(c.NodeRepo)
 	c.SensorService = services.NewSensorService(c.SensorRepo)
 	c.AlertService = services.NewAlertService(c.AlertRepo)
-	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, c.AI, cfg)
+	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, c.AI, cfg, c.WSHub)
 	c.HarvestService = services.NewHarvestService(c.HarvestRepo, c.AI)
 	c.ServiceRequestService = services.NewServiceRequestService(c.ServiceRequestRepo)
 	c.TransactionService = services.NewTransactionService(c.TransactionRepo)
@@ -122,11 +127,6 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.TransactionHandler = handlers.NewTransactionHandler(c.TransactionService)
 	c.AudioHandler = handlers.NewAudioHandler(c.AudioService)
 	c.AIHandler = handlers.NewAIHandler(c.AI)
-
-	// Initialize WebSocket hub
-	c.WSHub = websocket.NewHub()
-	c.WSHandler = websocket.NewHandler(c.WSHub, cfg)
-	go c.WSHub.Run()
 
 	return c
 }
