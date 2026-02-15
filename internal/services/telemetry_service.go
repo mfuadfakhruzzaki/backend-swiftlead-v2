@@ -53,6 +53,19 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		return err
 	}
 
+	// If this node is not a gateway, also mark the gateway of the same RBW as online
+	// because data from nest/lmb/pump nodes passes through the gateway (ESP-NOW → MQTT)
+	if node.NodeType != models.NodeTypeGateway {
+		gateway, err := s.nodeRepo.GetGatewayByRBW(ctx, node.RBWID)
+		if err != nil {
+			logger.Error("Failed to get gateway for RBW %s: %v", node.RBWID, err)
+		} else if gateway != nil {
+			if err := s.nodeRepo.UpdateLastSeen(ctx, gateway.ID); err != nil {
+				logger.Error("Failed to update gateway last_seen: %v", err)
+			}
+		}
+	}
+
 	// Get sensors for this node
 	sensors, err := s.sensorRepo.ListByNode(ctx, node.ID)
 	if err != nil {

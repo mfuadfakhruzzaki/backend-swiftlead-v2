@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -46,6 +47,18 @@ func NewHandler(hub *Hub, cfg *config.Config) *Handler {
 
 // ServeWS handles WebSocket requests
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
+	// Workaround: reverse proxies (Traefik, Nginx) using HTTP/2 may strip
+	// hop-by-hop headers (Connection, Upgrade). Restore them if WebSocket
+	// key is present, indicating this is genuinely a WebSocket request.
+	if r.Header.Get("Sec-WebSocket-Key") != "" {
+		if !strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") {
+			r.Header.Set("Connection", "Upgrade")
+		}
+		if strings.ToLower(r.Header.Get("Upgrade")) != "websocket" {
+			r.Header.Set("Upgrade", "websocket")
+		}
+	}
+
 	// Get user ID from context (set by auth middleware)
 	userID := ""
 	if claims, ok := r.Context().Value("claims").(map[string]interface{}); ok {
