@@ -17,35 +17,40 @@ const (
 
 // Middleware creates an authentication middleware
 func Middleware(secret string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				response.Unauthorized(w, "Missing authorization header")
-				return
-			}
+	       return func(next http.Handler) http.Handler {
+		       return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			       authHeader := r.Header.Get("Authorization")
+			       if authHeader == "" {
+				       // Fallback: check ?token= query param (required for WebSocket)
+				       if tokenParam := r.URL.Query().Get("token"); tokenParam != "" {
+					       authHeader = "Bearer " + tokenParam
+				       } else {
+					       response.Unauthorized(w, "Missing authorization header")
+					       return
+				       }
+			       }
 
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				response.Unauthorized(w, "Invalid authorization header format")
-				return
-			}
+			       parts := strings.Split(authHeader, " ")
+			       if len(parts) != 2 || parts[0] != "Bearer" {
+				       response.Unauthorized(w, "Invalid authorization header format")
+				       return
+			       }
 
-			claims, err := ValidateToken(parts[1], secret)
-			if err != nil {
-				if err == ErrExpiredToken {
-					response.Unauthorized(w, "Token has expired")
-				} else {
-					response.Unauthorized(w, "Invalid token")
-				}
-				return
-			}
+			       claims, err := ValidateToken(parts[1], secret)
+			       if err != nil {
+				       if err == ErrExpiredToken {
+					       response.Unauthorized(w, "Token has expired")
+				       } else {
+					       response.Unauthorized(w, "Invalid token")
+				       }
+				       return
+			       }
 
-			// Add claims to context
-			ctx := context.WithValue(r.Context(), UserContextKey, claims)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
+			       // Add claims to context
+			       ctx := context.WithValue(r.Context(), UserContextKey, claims)
+			       next.ServeHTTP(w, r.WithContext(ctx))
+		       })
+	       }
 }
 
 // RequireRole creates a middleware that requires specific roles

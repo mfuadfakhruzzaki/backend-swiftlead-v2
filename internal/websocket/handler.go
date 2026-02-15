@@ -51,13 +51,11 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		r.Header.Get("Connection"), r.Header.Get("Upgrade"),
 		r.Header.Get("Sec-WebSocket-Key"), r.Header.Get("Sec-WebSocket-Version"))
 
-	// Get user ID from context (set by auth middleware)
-	userID := ""
-	if claims, ok := r.Context().Value("claims").(map[string]interface{}); ok {
-		if id, ok := claims["user_id"].(string); ok {
-			userID = id
-		}
-	}
+	       // Get user ID from context (set by auth middleware)
+	       userID := ""
+	       if claims := auth.GetUserFromContext(r.Context()); claims != nil {
+		       userID = claims.UserID
+	       }
 
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(w, r, nil)
