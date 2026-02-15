@@ -2,12 +2,14 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/swiftlead/backend-swiftlet/internal/ai"
 	"github.com/swiftlead/backend-swiftlet/internal/config"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
+	"github.com/swiftlead/backend-swiftlet/internal/websocket"
 	"github.com/swiftlead/backend-swiftlet/pkg/logger"
 )
 
@@ -19,6 +21,7 @@ type TelemetryService struct {
 	alertRepo     repository.AlertRepository
 	aiClient      *ai.Client
 	cfg           *config.Config
+	wsHub         *websocket.Hub
 }
 
 // NewTelemetryService creates a new telemetry service
@@ -29,6 +32,7 @@ func NewTelemetryService(
 	alertRepo repository.AlertRepository,
 	aiClient *ai.Client,
 	cfg *config.Config,
+	wsHub *websocket.Hub,
 ) *TelemetryService {
 	return &TelemetryService{
 		nodeRepo:      nodeRepo,
@@ -37,6 +41,7 @@ func NewTelemetryService(
 		alertRepo:     alertRepo,
 		aiClient:      aiClient,
 		cfg:           cfg,
+		wsHub:         wsHub,
 	}
 }
 
@@ -136,6 +141,25 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		}
 		if err := s.telemetryRepo.CreateReading(ctx, reading); err != nil {
 			return err
+		}
+
+		// Broadcast to WebSocket clients
+		if s.wsHub != nil {
+			sensorData, _ := json.Marshal(map[string]interface{}{
+				"sensor_id":   sensor.ID,
+				"node_id":     node.ID,
+				"rbw_id":      node.RBWID,
+				"sensor_type": sensor.SensorType,
+				"value":       value,
+				"unit":        sensor.Unit,
+				"is_anomaly":  isAnomaly,
+				"recorded_at": recordedAt.Format(time.RFC3339),
+			})
+			s.wsHub.BroadcastAll(websocket.Message{
+				Type:      "sensor_reading",
+				Data:      sensorData,
+				Timestamp: time.Now(),
+			})
 		}
 
 		// Create alert if threshold exceeded or AI anomaly detected
