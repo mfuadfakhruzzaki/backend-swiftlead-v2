@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
+	"github.com/swiftlead/backend-swiftlet/internal/auth"
 	"github.com/swiftlead/backend-swiftlet/internal/config"
 )
 
