@@ -23,6 +23,7 @@ type NodeRepository interface {
 	ListByRBW(ctx context.Context, rbwID string, limit, offset int) ([]*models.Node, int, error)
 	UpdateStatus(ctx context.Context, id, status string) error
 	UpdateLastSeen(ctx context.Context, id string) error
+	GetGatewayByRBW(ctx context.Context, rbwID string) (*models.Node, error)
 	UpdateAudioState(ctx context.Context, id string, lmbState, nestState *bool) error
 	UpdatePumpState(ctx context.Context, id string, pumpState bool) error
 }
@@ -178,6 +179,31 @@ func (r *nodeRepository) UpdateLastSeen(ctx context.Context, id string) error {
 	query := `UPDATE nodes SET last_seen = NOW(), status_node = 'online', updated_at = NOW() WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
+}
+
+func (r *nodeRepository) GetGatewayByRBW(ctx context.Context, rbwID string) (*models.Node, error) {
+	query := `
+		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
+		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
+		       installed_at, uninstalled_at, created_at, updated_at
+		FROM nodes
+		WHERE rbw_id = $1 AND node_type = 'gateway'
+		LIMIT 1
+	`
+	node := &models.Node{}
+	err := r.db.QueryRowContext(ctx, query, rbwID).Scan(
+		&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
+		&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
+		&node.StateAudioNest, &node.HasPump, &node.StatePump,
+		&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil // No gateway registered for this RBW
+	}
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
 }
 
 func (r *nodeRepository) UpdateAudioState(ctx context.Context, id string, lmbState, nestState *bool) error {
