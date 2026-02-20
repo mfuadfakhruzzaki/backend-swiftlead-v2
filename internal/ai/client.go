@@ -48,20 +48,23 @@ func (c *Client) HealthCheck(ctx context.Context) (*HealthResponse, error) {
 
 	resp, err := c.doRequest(ctx, "GET", "/api/v1/ai/health", nil)
 	if err != nil {
-		return nil, err
+		logger.Warn("AI Engine health check failed to connect: %v", err)
+		return &HealthResponse{Status: "unhealthy"}, nil
 	}
 	defer resp.Body.Close()
 
 	var apiResp APIResponse[HealthResponse]
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, err
+		logger.Warn("AI Engine health check decoding failed: %v", err)
+		return &HealthResponse{Status: "unhealthy"}, nil
 	}
 	if !apiResp.Success {
 		errMsg := "Unknown error"
 		if apiResp.Error != nil {
 			errMsg = *apiResp.Error
 		}
-		return nil, fmt.Errorf("AI Engine Error: %s", errMsg)
+		logger.Warn("AI Engine Error during health check: %s", errMsg)
+		return &HealthResponse{Status: "unhealthy"}, nil
 	}
 
 	return &apiResp.Data, nil
@@ -171,20 +174,23 @@ func (c *Client) Analyze(ctx context.Context, req *AnalyzeRequest) (*AnalyzeResp
 
 	resp, err := c.doRequest(ctx, "POST", "/api/v1/ai/analyze", req)
 	if err != nil {
-		return nil, err
+		logger.Warn("AI Engine analyze request failed: %v", err)
+		return c.fallbackAnalyze(req), nil
 	}
 	defer resp.Body.Close()
 
 	var apiResp APIResponse[AnalyzeResponse]
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, err
+		logger.Warn("AI Engine analyze decoding failed: %v", err)
+		return c.fallbackAnalyze(req), nil
 	}
 	if !apiResp.Success {
 		errMsg := "Unknown error"
 		if apiResp.Error != nil {
 			errMsg = *apiResp.Error
 		}
-		return nil, fmt.Errorf("AI Engine Error: %s", errMsg)
+		logger.Warn("AI Engine Error during analyze: %s", errMsg)
+		return c.fallbackAnalyze(req), nil
 	}
 
 	if apiResp.Data.GradePrediction != nil {
@@ -280,5 +286,89 @@ func (c *Client) fallbackGradePredict(req *GradePredictionRequest) *GradePredict
 			"sedang": 0.34,
 			"buruk":  0.33,
 		},
+	}
+}
+
+// fallbackAnalyze provides robust fallback analysis if AI Engine is unreachable
+func (c *Client) fallbackAnalyze(req *AnalyzeRequest) *AnalyzeResponse {
+	grade := c.fallbackGradePredict(&GradePredictionRequest{
+		Temperature: req.Temperature,
+		Humidity:    req.Humidity,
+		Ammonia:     req.Ammonia,
+		RBWID:       req.RBWID,
+		NodeID:      req.NodeID,
+	})
+
+	pump := &PumpPredictionResponse{
+		PumpState:       "off",
+		Confidence:      0.9,
+		DurationMinutes: 0.0,
+	}
+
+	evalSensor := func(val, optMin, optMax float64, unit string) *SensorStatus {
+		status := "normal"
+		score := 100.0
+		if val < optMin {
+			diff := optMin - val
+			score = score - (diff * 5)
+		} else if val > optMax {
+			diff := val - optMax
+			score = score - (diff * 5)
+		}
+
+		if score < 0 {
+			score = 0
+		}
+
+		if score <= 50 {
+			status = "critical"
+		} else if score < 100 {
+			status = "warning"
+		}
+
+		return &SensorStatus{
+			Value:       val,
+			Unit:        unit,
+			Status:      status,
+			HealthScore: score,
+		}
+	}
+
+	sTemp := evalSensor(req.Temperature, 28.0, 30.0, "°C")
+	sHum := evalSensor(req.Humidity, 70.0, 80.0, "%")
+	sAmm := evalSensor(req.Ammonia, 0.0, 20.0, "ppm")
+
+	overall := (sTemp.HealthScore + sHum.HealthScore + sAmm.HealthScore) / 3.0
+
+	var recs []*Recommendation
+	if sAmm.Status != "normal" {
+		pri := "medium"
+		if sAmm.Status == "critical" {
+			pri = "high"
+		}
+		recs = append(recs, &Recommendation{
+			Priority: pri,
+			Type:     "ventilation",
+			Message:  "Consider increasing ventilation to reduce ammonia levels (Fallback rule)",
+		})
+	}
+	if sTemp.Status == "critical" && req.Temperature > 30.0 {
+		recs = append(recs, &Recommendation{
+			Priority: "high",
+			Type:     "temperature",
+			Message:  "Critical high temperature. Ensure cooling system is active. (Fallback rule)",
+		})
+	}
+
+	return &AnalyzeResponse{
+		OverallHealthScore: overall,
+		Sensors: map[string]*SensorStatus{
+			"temperature": sTemp,
+			"humidity":    sHum,
+			"ammonia":     sAmm,
+		},
+		GradePrediction:    grade,
+		PumpRecommendation: pump,
+		Recommendations:    recs,
 	}
 }
