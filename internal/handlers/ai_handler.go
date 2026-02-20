@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/swiftlead/backend-swiftlet/internal/ai"
+	"github.com/swiftlead/backend-swiftlet/pkg/logger"
 	"github.com/swiftlead/backend-swiftlet/pkg/response"
 )
 
