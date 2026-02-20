@@ -45,17 +45,25 @@ func (c *Client) HealthCheck(ctx context.Context) (*HealthResponse, error) {
 		return &HealthResponse{Status: "disabled"}, nil
 	}
 
-	resp, err := c.doRequest(ctx, "GET", "/health", nil)
+	resp, err := c.doRequest(ctx, "GET", "/api/v1/ai/health", nil)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var health HealthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+	var apiResp APIResponse[HealthResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, err
 	}
-	return &health, nil
+	if !apiResp.Success {
+		errMsg := "Unknown error"
+		if apiResp.Error != nil {
+			errMsg = *apiResp.Error
+		}
+		return nil, fmt.Errorf("AI Engine Error: %s", errMsg)
+	}
+
+	return &apiResp.Data, nil
 }
 
 // DetectAnomaly detects anomalies in sensor readings
@@ -64,18 +72,26 @@ func (c *Client) DetectAnomaly(ctx context.Context, req *AnomalyRequest) (*Anoma
 		return &AnomalyResponse{IsAnomaly: false}, nil
 	}
 
-	resp, err := c.doRequest(ctx, "POST", "/v1/anomaly-detect", req)
+	resp, err := c.doRequest(ctx, "POST", "/api/v1/ai/anomaly-detect", req)
 	if err != nil {
 		logger.Warn("AI anomaly detection failed: %v", err)
 		return &AnomalyResponse{IsAnomaly: false}, nil // Graceful degradation
 	}
 	defer resp.Body.Close()
 
-	var result AnomalyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var apiResp APIResponse[AnomalyResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	if !apiResp.Success {
+		errMsg := "Unknown error"
+		if apiResp.Error != nil {
+			errMsg = *apiResp.Error
+		}
+		logger.Warn("AI Engine anomaly detection error: %s", errMsg)
+		return &AnomalyResponse{IsAnomaly: false}, nil // Graceful degradation
+	}
+	return &apiResp.Data, nil
 }
 
 // PredictGrade predicts harvest grade based on environment
@@ -85,18 +101,26 @@ func (c *Client) PredictGrade(ctx context.Context, req *GradePredictionRequest) 
 		return c.fallbackGradePredict(req), nil
 	}
 
-	resp, err := c.doRequest(ctx, "POST", "/v1/predict-grade", req)
+	resp, err := c.doRequest(ctx, "POST", "/api/v1/ai/predict-grade", req)
 	if err != nil {
 		logger.Warn("AI grade prediction failed: %v", err)
 		return c.fallbackGradePredict(req), nil // Graceful degradation
 	}
 	defer resp.Body.Close()
 
-	var result GradePredictionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var apiResp APIResponse[GradePredictionResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	if !apiResp.Success {
+		errMsg := "Unknown error"
+		if apiResp.Error != nil {
+			errMsg = *apiResp.Error
+		}
+		logger.Warn("AI Engine grade prediction error: %s", errMsg)
+		return c.fallbackGradePredict(req), nil // Graceful degradation
+	}
+	return &apiResp.Data, nil
 }
 
 // PredictPump recommends pump action based on environment
@@ -105,18 +129,26 @@ func (c *Client) PredictPump(ctx context.Context, req *PumpPredictionRequest) (*
 		return &PumpPredictionResponse{PumpState: "OFF", Confidence: 0}, nil
 	}
 
-	resp, err := c.doRequest(ctx, "POST", "/v1/predict-pump", req)
+	resp, err := c.doRequest(ctx, "POST", "/api/v1/ai/predict-pump", req)
 	if err != nil {
 		logger.Warn("AI pump prediction failed: %v", err)
 		return &PumpPredictionResponse{PumpState: "OFF", Confidence: 0}, nil
 	}
 	defer resp.Body.Close()
 
-	var result PumpPredictionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var apiResp APIResponse[PumpPredictionResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	if !apiResp.Success {
+		errMsg := "Unknown error"
+		if apiResp.Error != nil {
+			errMsg = *apiResp.Error
+		}
+		logger.Warn("AI Engine pump prediction error: %s", errMsg)
+		return &PumpPredictionResponse{PumpState: "OFF", Confidence: 0}, nil
+	}
+	return &apiResp.Data, nil
 }
 
 // Analyze performs comprehensive analysis
@@ -125,17 +157,24 @@ func (c *Client) Analyze(ctx context.Context, req *AnalyzeRequest) (*AnalyzeResp
 		return nil, fmt.Errorf("AI Engine is disabled")
 	}
 
-	resp, err := c.doRequest(ctx, "POST", "/v1/analyze", req)
+	resp, err := c.doRequest(ctx, "POST", "/api/v1/ai/analyze", req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var result AnalyzeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var apiResp APIResponse[AnalyzeResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	if !apiResp.Success {
+		errMsg := "Unknown error"
+		if apiResp.Error != nil {
+			errMsg = *apiResp.Error
+		}
+		return nil, fmt.Errorf("AI Engine Error: %s", errMsg)
+	}
+	return &apiResp.Data, nil
 }
 
 // doRequest performs an HTTP request to the AI Engine
