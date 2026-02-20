@@ -21,6 +21,7 @@ func NewAIHandler(aiClient *ai.Client) *AIHandler {
 func (h *AIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	health, err := h.aiClient.HealthCheck(r.Context())
 	if err != nil {
+		logger.Error("AI Engine health check failed: %v", err)
 		response.InternalError(w, "AI Engine health check failed")
 		return
 	}
@@ -42,6 +43,7 @@ func (h *AIHandler) PredictGrade(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.aiClient.PredictGrade(r.Context(), &req)
 	if err != nil {
+		logger.Error("AI grade prediction failed: %v", err)
 		response.InternalError(w, "AI grade prediction failed")
 		return
 	}
@@ -64,6 +66,7 @@ func (h *AIHandler) PredictPump(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.aiClient.PredictPump(r.Context(), &req)
 	if err != nil {
+		logger.Error("AI pump prediction failed: %v", err)
 		response.InternalError(w, "AI pump prediction failed")
 		return
 	}
@@ -86,6 +89,7 @@ func (h *AIHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.aiClient.Analyze(r.Context(), &req)
 	if err != nil {
+		logger.Error("AI analysis failed: %v", err)
 		response.InternalError(w, "AI analysis failed")
 		return
 	}
@@ -108,6 +112,7 @@ func (h *AIHandler) AnomalyDetect(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.aiClient.DetectAnomaly(r.Context(), &req)
 	if err != nil {
+		logger.Error("AI anomaly detection failed: %v", err)
 		response.InternalError(w, "AI anomaly detection failed")
 		return
 	}
