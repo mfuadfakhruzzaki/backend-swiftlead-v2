@@ -2,6 +2,13 @@ package ai
 
 import "time"
 
+// APIResponse is the generic envelope for AI engine responses
+type APIResponse[T any] struct {
+	Success bool   `json:"success"`
+	Data    T      `json:"data,omitempty"`
+	Error   *string `json:"error,omitempty"`
+}
+
 // AnomalyRequest for anomaly detection
 type AnomalyRequest struct {
 	SensorID   string    `json:"sensor_id"`
