@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/swiftlead/backend-swiftlet/pkg/logger"
@@ -120,6 +121,15 @@ func (c *Client) PredictGrade(ctx context.Context, req *GradePredictionRequest) 
 		logger.Warn("AI Engine grade prediction error: %s", errMsg)
 		return c.fallbackGradePredict(req), nil // Graceful degradation
 	}
+
+	apiResp.Data.Grade = MapGradeToDBEnum(apiResp.Data.Grade)
+	if apiResp.Data.Probabilities != nil {
+		newProbs := make(map[string]float64)
+		for k, v := range apiResp.Data.Probabilities {
+			newProbs[MapGradeToDBEnum(k)] = v
+		}
+		apiResp.Data.Probabilities = newProbs
+	}
 	return &apiResp.Data, nil
 }
 
@@ -148,6 +158,8 @@ func (c *Client) PredictPump(ctx context.Context, req *PumpPredictionRequest) (*
 		logger.Warn("AI Engine pump prediction error: %s", errMsg)
 		return &PumpPredictionResponse{PumpState: "OFF", Confidence: 0}, nil
 	}
+
+	apiResp.Data.PumpState = strings.ToLower(apiResp.Data.PumpState)
 	return &apiResp.Data, nil
 }
 
@@ -174,6 +186,21 @@ func (c *Client) Analyze(ctx context.Context, req *AnalyzeRequest) (*AnalyzeResp
 		}
 		return nil, fmt.Errorf("AI Engine Error: %s", errMsg)
 	}
+
+	if apiResp.Data.GradePrediction != nil {
+		apiResp.Data.GradePrediction.Grade = MapGradeToDBEnum(apiResp.Data.GradePrediction.Grade)
+		if apiResp.Data.GradePrediction.Probabilities != nil {
+			newProbs := make(map[string]float64)
+			for k, v := range apiResp.Data.GradePrediction.Probabilities {
+				newProbs[MapGradeToDBEnum(k)] = v
+			}
+			apiResp.Data.GradePrediction.Probabilities = newProbs
+		}
+	}
+	if apiResp.Data.PumpRecommendation != nil {
+		apiResp.Data.PumpRecommendation.PumpState = strings.ToLower(apiResp.Data.PumpRecommendation.PumpState)
+	}
+
 	return &apiResp.Data, nil
 }
 
