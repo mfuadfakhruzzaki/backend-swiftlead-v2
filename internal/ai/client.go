@@ -22,7 +22,7 @@ type Client struct {
 // NewClient creates a new AI Engine client
 func NewClient(baseURL string, timeout int, enabled bool) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 		},
