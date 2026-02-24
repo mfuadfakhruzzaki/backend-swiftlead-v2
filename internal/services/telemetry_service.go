@@ -71,6 +71,15 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		}
 	}
 
+	// If this node IS a gateway, also mark pump and LMB nodes in the same RBW as online
+	// because pump/LMB nodes communicate via ESP-NOW through the gateway (they don't send MQTT data directly)
+	if node.NodeType == models.NodeTypeGateway {
+		espNowTypes := []string{models.NodeTypePump, models.NodeTypeLMB}
+		if err := s.nodeRepo.UpdateLastSeenByRBWAndTypes(ctx, node.RBWID, espNowTypes); err != nil {
+			logger.Error("Failed to update pump/LMB last_seen for RBW %s: %v", node.RBWID, err)
+		}
+	}
+
 	// Get sensors for this node
 	sensors, err := s.sensorRepo.ListByNode(ctx, node.ID)
 	if err != nil {

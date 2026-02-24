@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/lib/pq"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 )
 
@@ -26,6 +27,7 @@ type NodeRepository interface {
 	GetGatewayByRBW(ctx context.Context, rbwID string) (*models.Node, error)
 	UpdateAudioState(ctx context.Context, id string, lmbState, nestState *bool) error
 	UpdatePumpState(ctx context.Context, id string, pumpState bool) error
+	UpdateLastSeenByRBWAndTypes(ctx context.Context, rbwID string, nodeTypes []string) error
 }
 
 type nodeRepository struct {
@@ -221,5 +223,15 @@ func (r *nodeRepository) UpdateAudioState(ctx context.Context, id string, lmbSta
 func (r *nodeRepository) UpdatePumpState(ctx context.Context, id string, pumpState bool) error {
 	query := `UPDATE nodes SET state_pump = $1, updated_at = NOW() WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, query, pumpState, id)
+	return err
+}
+
+func (r *nodeRepository) UpdateLastSeenByRBWAndTypes(ctx context.Context, rbwID string, nodeTypes []string) error {
+	query := `
+		UPDATE nodes 
+		SET last_seen = NOW(), status_node = 'online', updated_at = NOW() 
+		WHERE rbw_id = $1 AND node_type = ANY($2)
+	`
+	_, err := r.db.ExecContext(ctx, query, rbwID, pq.Array(nodeTypes))
 	return err
 }
