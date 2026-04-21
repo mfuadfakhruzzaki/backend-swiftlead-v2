@@ -50,6 +50,7 @@ type Container struct {
 	TransactionService    *services.TransactionService
 	AudioService          *services.AudioService
 	SensorTrendCalculator *services.SensorTrendCalculator
+	NodeMonitorService    *services.NodeMonitorService
 
 	// Handlers
 	AuthHandler           *handlers.AuthHandler
@@ -111,6 +112,8 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.TransactionService = services.NewTransactionService(c.TransactionRepo)
 	c.AudioService = services.NewAudioService(c.MQTT, c.NodeRepo)
 	c.SensorTrendCalculator = services.NewSensorTrendCalculator(c.TelemetryRepo)
+	c.NodeMonitorService = services.NewNodeMonitorService(c.NodeRepo, c.AlertRepo, c.WSHub, cfg)
+	c.NodeMonitorService.Start()
 
 	// Set MQTT handler
 	c.MQTT.SetHandler(c.TelemetryService.ProcessSensorPayload)
@@ -150,6 +153,9 @@ func (c *Container) ConnectMQTT() error {
 
 // Close cleans up resources
 func (c *Container) Close() {
+	if c.NodeMonitorService != nil {
+		c.NodeMonitorService.Stop()
+	}
 	if c.MQTT != nil {
 		c.MQTT.Disconnect()
 	}
