@@ -21,6 +21,9 @@ type AlertRepository interface {
 	Resolve(ctx context.Context, id, resolvedBy string) error
 	List(ctx context.Context, rbwID string, isRead, resolved *bool, limit, offset int) ([]*models.Alert, int, error)
 	ListByRBW(ctx context.Context, rbwID string, limit, offset int) ([]*models.Alert, int, error)
+	// HasUnresolved returns true if an unresolved alert of the given type already exists.
+	// Match is by sensor_id when sensorID != nil, otherwise by node_id.
+	HasUnresolved(ctx context.Context, alertType string, nodeID, sensorID *string) (bool, error)
 }
 
 type alertRepository struct {
@@ -155,4 +158,23 @@ func (r *alertRepository) List(ctx context.Context, rbwID string, isRead, resolv
 
 func (r *alertRepository) ListByRBW(ctx context.Context, rbwID string, limit, offset int) ([]*models.Alert, int, error) {
 	return r.List(ctx, rbwID, nil, nil, limit, offset)
+}
+
+func (r *alertRepository) HasUnresolved(ctx context.Context, alertType string, nodeID, sensorID *string) (bool, error) {
+	var exists bool
+	var query string
+	var args []interface{}
+
+	if sensorID != nil {
+		query = `SELECT EXISTS (SELECT 1 FROM alerts WHERE alert_type = $1 AND sensor_id = $2 AND resolved_at IS NULL)`
+		args = []interface{}{alertType, *sensorID}
+	} else if nodeID != nil {
+		query = `SELECT EXISTS (SELECT 1 FROM alerts WHERE alert_type = $1 AND node_id = $2 AND resolved_at IS NULL)`
+		args = []interface{}{alertType, *nodeID}
+	} else {
+		return false, nil
+	}
+
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&exists)
+	return exists, err
 }

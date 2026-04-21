@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
@@ -28,6 +29,8 @@ type NodeRepository interface {
 	UpdateAudioState(ctx context.Context, id string, lmbState, nestState *bool) error
 	UpdatePumpState(ctx context.Context, id string, pumpState bool) error
 	UpdateLastSeenByRBWAndTypes(ctx context.Context, rbwID string, nodeTypes []string) error
+	// ListStale returns nodes that are still marked online but have not reported since olderThan.
+	ListStale(ctx context.Context, olderThan time.Time) ([]*models.Node, error)
 }
 
 type nodeRepository struct {
@@ -228,10 +231,43 @@ func (r *nodeRepository) UpdatePumpState(ctx context.Context, id string, pumpSta
 
 func (r *nodeRepository) UpdateLastSeenByRBWAndTypes(ctx context.Context, rbwID string, nodeTypes []string) error {
 	query := `
-		UPDATE nodes 
-		SET last_seen = NOW(), status_node = 'online', updated_at = NOW() 
+		UPDATE nodes
+		SET last_seen = NOW(), status_node = 'online', updated_at = NOW()
 		WHERE rbw_id = $1 AND node_type = ANY($2)
 	`
 	_, err := r.db.ExecContext(ctx, query, rbwID, pq.Array(nodeTypes))
 	return err
+}
+
+func (r *nodeRepository) ListStale(ctx context.Context, olderThan time.Time) ([]*models.Node, error) {
+	query := `
+		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
+		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
+		       installed_at, uninstalled_at, created_at, updated_at
+		FROM nodes
+		WHERE status_node = 'online'
+		  AND last_seen IS NOT NULL
+		  AND last_seen < $1
+		  AND uninstalled_at IS NULL
+	`
+	rows, err := r.db.QueryContext(ctx, query, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []*models.Node
+	for rows.Next() {
+		node := &models.Node{}
+		if err := rows.Scan(
+			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
+			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
+			&node.StateAudioNest, &node.HasPump, &node.StatePump,
+			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, rows.Err()
 }

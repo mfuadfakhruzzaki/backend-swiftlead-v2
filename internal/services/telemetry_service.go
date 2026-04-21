@@ -171,20 +171,24 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 			})
 		}
 
-		// Create alert if threshold exceeded or AI anomaly detected
+		// Create alert if threshold exceeded or AI anomaly detected (with deduplication)
 		if alertType != "" {
-			severity := s.getSeverity(alertType, value)
-			msg := s.getAlertMessage(alertType, value)
-			alert := &models.Alert{
-				RBWID:     node.RBWID,
-				NodeID:    &node.ID,
-				SensorID:  &sensor.ID,
-				AlertType: alertType,
-				Severity:  severity,
-				Message:   msg,
-			}
-			if err := s.alertRepo.Create(ctx, alert); err != nil {
-				return err
+			exists, _ := s.alertRepo.HasUnresolved(ctx, alertType, &node.ID, &sensor.ID)
+			if !exists {
+				severity := s.getSeverity(alertType, value)
+				msg := s.getAlertMessage(alertType, value)
+				alert := &models.Alert{
+					RBWID:     node.RBWID,
+					NodeID:    &node.ID,
+					SensorID:  &sensor.ID,
+					AlertType: alertType,
+					Severity:  severity,
+					Message:   msg,
+				}
+				if err := s.alertRepo.Create(ctx, alert); err != nil {
+					return err
+				}
+				s.broadcastAlert(alert)
 			}
 		}
 	}
@@ -304,4 +308,25 @@ func (s *TelemetryService) getAlertMessage(alertType string, _ float64) *string 
 // GetLatestReading retrieves the latest reading for a sensor
 func (s *TelemetryService) GetLatestReading(ctx context.Context, sensorID string) (*models.SensorReading, error) {
 	return s.telemetryRepo.GetLatestReading(ctx, sensorID)
+}
+
+func (s *TelemetryService) broadcastAlert(alert *models.Alert) {
+	if s.wsHub == nil {
+		return
+	}
+	data, _ := json.Marshal(map[string]interface{}{
+		"id":         alert.ID,
+		"rbw_id":     alert.RBWID,
+		"node_id":    alert.NodeID,
+		"sensor_id":  alert.SensorID,
+		"alert_type": alert.AlertType,
+		"severity":   alert.Severity,
+		"message":    alert.Message,
+		"created_at": alert.CreatedAt.Format(time.RFC3339),
+	})
+	s.wsHub.BroadcastAll(websocket.Message{
+		Type:      "new_alert",
+		Data:      data,
+		Timestamp: time.Now(),
+	})
 }
