@@ -96,32 +96,20 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		var value float64
 		var alertType string
 
+		// Extract value per sensor type — no hardcoded thresholds, AI decides what's anomalous
 		switch sensor.SensorType {
 		case models.SensorTypeTemp:
 			value = payload.Temp
-			if value > s.cfg.TempHighThreshold {
-				alertType = models.AlertTypeTempHigh
-			} else if value < s.cfg.TempLowThreshold {
-				alertType = models.AlertTypeTempLow
-			}
 		case models.SensorTypeHumid:
 			value = payload.Humidity
-			if value > s.cfg.HumidHighThreshold {
-				alertType = models.AlertTypeHumidHigh
-			} else if value < s.cfg.HumidLowThreshold {
-				alertType = models.AlertTypeHumidLow
-			}
 		case models.SensorTypeAmmonia:
 			value = payload.Ammonia
-			if value > s.cfg.AmmoniaHighThreshold {
-				alertType = models.AlertTypeAmmoniaHigh
-			}
 		default:
 			continue
 		}
 
-		// AI anomaly detection
-		isAnomaly := alertType != ""
+		// AI anomaly detection is the sole alert trigger
+		isAnomaly := false
 		if s.aiClient != nil && s.aiClient.IsEnabled() {
 			anomalyReq := &ai.AnomalyRequest{
 				SensorID:   sensor.ID,
@@ -134,9 +122,7 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 			anomalyResp, err := s.aiClient.DetectAnomaly(ctx, anomalyReq)
 			if err == nil && anomalyResp.IsAnomaly {
 				isAnomaly = true
-				if alertType == "" {
-					alertType = models.AlertTypeAIAnomaly
-				}
+				alertType = models.AlertTypeAIAnomaly
 				logger.Info("AI anomaly detected: sensor=%s value=%.2f score=%.2f", sensor.ID, value, anomalyResp.Score)
 			}
 		}
@@ -235,6 +221,25 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 					Timestamp: time.Now(),
 				})
 			}
+
+			// 4. Node-level alert from multivariate anomaly verdict
+			if decision.AnomalyVerdict == "anomaly" {
+				nid := nodeID
+				exists, _ := s.alertRepo.HasUnresolved(aiCtx, models.AlertTypeAIAnomaly, &nid, nil)
+				if !exists {
+					msg := "AI mendeteksi anomali lingkungan secara multivariate — kondisi RBW tidak normal"
+					alert := &models.Alert{
+						RBWID:     rbwID,
+						NodeID:    &nid,
+						AlertType: models.AlertTypeAIAnomaly,
+						Severity:  3,
+						Message:   &msg,
+					}
+					if err := s.alertRepo.Create(aiCtx, alert); err == nil {
+						s.broadcastAlert(alert)
+					}
+				}
+			}
 		}()
 	}
 
@@ -272,14 +277,9 @@ func (s *TelemetryService) GetReadings(ctx context.Context, sensorID string, fro
 	return s.telemetryRepo.GetReadings(ctx, sensorID, from, to, limit)
 }
 
-func (s *TelemetryService) getSeverity(alertType string, value float64) int {
+func (s *TelemetryService) getSeverity(alertType string, _ float64) int {
 	switch alertType {
-	case models.AlertTypeAmmoniaHigh:
-		if value > 35 {
-			return 5
-		}
-		return 4
-	case models.AlertTypeTempHigh, models.AlertTypeTempLow:
+	case models.AlertTypeAIAnomaly:
 		return 3
 	default:
 		return 2
