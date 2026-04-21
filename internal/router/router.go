@@ -97,6 +97,9 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Get("/{node_id}/audio", c.AudioHandler.GetAudioState)
 				r.Patch("/{node_id}/audio", c.AudioHandler.ControlAudio)
 				r.Patch("/{node_id}/pump", c.AudioHandler.ControlPump)
+
+				// AI analysis using real-time sensor data from DB
+				r.Post("/{node_id}/ai/analyze", c.AIHandler.AnalyzeNode)
 			})
 
 			// Sensor routes

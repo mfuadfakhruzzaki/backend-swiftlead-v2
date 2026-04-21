@@ -126,7 +126,7 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.ServiceRequestHandler = handlers.NewServiceRequestHandler(c.ServiceRequestService)
 	c.TransactionHandler = handlers.NewTransactionHandler(c.TransactionService)
 	c.AudioHandler = handlers.NewAudioHandler(c.AudioService)
-	c.AIHandler = handlers.NewAIHandler(c.AI)
+	c.AIHandler = handlers.NewAIHandler(c.AI, c.SensorService, c.TelemetryService)
 
 	return c
 }
