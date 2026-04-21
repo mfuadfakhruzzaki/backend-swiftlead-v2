@@ -129,9 +129,9 @@ type AnalyzeResponse struct {
 // PushReadingRequest for /v1/push-reading
 type PushReadingRequest struct {
 	NodeID      string   `json:"node_id"`
-	Temperature float64  `json:"temperature"`
-	Humidity    float64  `json:"humidity"`
-	Ammonia     float64  `json:"ammonia"`
+	Temperature float64  `json:"temperature_c"`
+	Humidity    float64  `json:"humidity_rh"`
+	Ammonia     float64  `json:"nh3_ppm"`
 	Timestamp   *float64 `json:"timestamp,omitempty"`
 }
 
