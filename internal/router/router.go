@@ -98,8 +98,11 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Patch("/{node_id}/audio", c.AudioHandler.ControlAudio)
 				r.Patch("/{node_id}/pump", c.AudioHandler.ControlPump)
 
-				// AI analysis using real-time sensor data from DB
+				// AI endpoints using real-time sensor data from DB (no body needed)
 				r.Post("/{node_id}/ai/analyze", c.AIHandler.AnalyzeNode)
+				r.Post("/{node_id}/ai/predict-pump", c.AIHandler.PredictPumpNode)
+				r.Post("/{node_id}/ai/predict-grade", c.AIHandler.PredictGradeNode)
+				r.Post("/{node_id}/ai/anomaly-detect", c.AIHandler.AnomalyDetectNode)
 			})
 
 			// Sensor routes
