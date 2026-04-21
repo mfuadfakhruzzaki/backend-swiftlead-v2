@@ -187,6 +187,85 @@ func (c *Client) Analyze(ctx context.Context, req *AnalyzeRequest) (*AnalyzeResp
 	return c.mapDecideV2ToAnalyze(req, &raw), nil
 }
 
+// PushReading pushes a sensor reading into the AI engine's rolling buffer — calls POST /v1/push-reading.
+// Non-critical: errors are logged and silently dropped so MQTT processing is never blocked.
+func (c *Client) PushReading(ctx context.Context, nodeID string, temp, humid, ammonia float64, ts *float64) error {
+	if !c.enabled {
+		return nil
+	}
+
+	body := PushReadingRequest{
+		NodeID:      nodeID,
+		Temperature: temp,
+		Humidity:    humid,
+		Ammonia:     ammonia,
+		Timestamp:   ts,
+	}
+	resp, err := c.doRequest(ctx, "POST", "/v1/push-reading", body)
+	if err != nil {
+		logger.Warn("AI push-reading failed for node %s: %v", nodeID, err)
+		return nil
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// DecideRealtime calls POST /v2/decide for a comprehensive multivariate decision.
+// Returns nil (no error) on failure so callers can treat it as non-critical.
+func (c *Client) DecideRealtime(ctx context.Context, nodeID string, temp, humid, ammonia float64) (*RealtimeDecision, error) {
+	if !c.enabled {
+		return nil, nil
+	}
+
+	body := struct {
+		NodeID       string  `json:"node_id"`
+		TemperatureC float64 `json:"temperature_c"`
+		HumidityRH   float64 `json:"humidity_rh"`
+		NH3PPM       float64 `json:"nh3_ppm"`
+		UseBuffer    bool    `json:"use_buffer"`
+	}{
+		NodeID:       nodeID,
+		TemperatureC: temp,
+		HumidityRH:   humid,
+		NH3PPM:       ammonia,
+		UseBuffer:    true,
+	}
+
+	resp, err := c.doRequest(ctx, "POST", "/v2/decide", body)
+	if err != nil {
+		logger.Warn("AI v2/decide failed for node %s: %v", nodeID, err)
+		return nil, nil
+	}
+	defer resp.Body.Close()
+
+	var raw aiDecideV2Response
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		logger.Warn("AI v2/decide decode failed: %v", err)
+		return nil, nil
+	}
+
+	verdict := "normal"
+	if v, ok := raw.Anomaly["verdict"].(string); ok {
+		verdict = v
+	}
+
+	confidence := 0.0
+	for _, v := range raw.Probabilities {
+		if v > confidence {
+			confidence = v
+		}
+	}
+
+	return &RealtimeDecision{
+		NodeID:         nodeID,
+		Grade:          MapGradeToDBEnum(raw.Grade),
+		SprayerOn:      raw.SprayerOn,
+		SprayerReason:  raw.SprayerReason,
+		AnomalyVerdict: verdict,
+		Confidence:     confidence,
+	}, nil
+}
+
 // mapDecideV2ToAnalyze converts /v2/decide response to AnalyzeResponse
 func (c *Client) mapDecideV2ToAnalyze(req *AnalyzeRequest, raw *aiDecideV2Response) *AnalyzeResponse {
 	grade := MapGradeToDBEnum(raw.Grade)
