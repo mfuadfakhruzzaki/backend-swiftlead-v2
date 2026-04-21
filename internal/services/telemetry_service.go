@@ -189,6 +189,51 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		}
 	}
 
+	// AI: push to buffer + comprehensive multivariate decision.
+	// Runs in a goroutine so MQTT processing is never blocked by AI latency.
+	if s.aiClient != nil && s.aiClient.IsEnabled() {
+		nodeID := node.ID
+		rbwID := node.RBWID
+		temp := payload.Temp
+		humid := payload.Humidity
+		ammonia := payload.Ammonia
+		ts := float64(recordedAt.Unix())
+		hub := s.wsHub
+
+		go func() {
+			aiCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			// 1. Push to rolling buffer (enables 1-hour rolling features for /v2/decide)
+			_ = s.aiClient.PushReading(aiCtx, nodeID, temp, humid, ammonia, &ts)
+
+			// 2. Multivariate decision: grade + pump + anomaly sekaligus
+			decision, err := s.aiClient.DecideRealtime(aiCtx, nodeID, temp, humid, ammonia)
+			if err != nil || decision == nil {
+				return
+			}
+
+			// 3. Broadcast hasil AI ke WebSocket clients
+			if hub != nil {
+				decisionData, _ := json.Marshal(map[string]interface{}{
+					"node_id":        nodeID,
+					"rbw_id":         rbwID,
+					"grade":          decision.Grade,
+					"sprayer_on":     decision.SprayerOn,
+					"sprayer_reason": decision.SprayerReason,
+					"anomaly":        decision.AnomalyVerdict,
+					"confidence":     decision.Confidence,
+					"recorded_at":    recordedAt.Format(time.RFC3339),
+				})
+				hub.BroadcastAll(websocket.Message{
+					Type:      "ai_decision",
+					Data:      decisionData,
+					Timestamp: time.Now(),
+				})
+			}
+		}()
+	}
+
 	return nil
 }
 

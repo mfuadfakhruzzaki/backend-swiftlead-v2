@@ -126,6 +126,25 @@ type AnalyzeResponse struct {
 	Recommendations    []*Recommendation        `json:"recommendations"`
 }
 
+// PushReadingRequest for /v1/push-reading
+type PushReadingRequest struct {
+	NodeID      string   `json:"node_id"`
+	Temperature float64  `json:"temperature"`
+	Humidity    float64  `json:"humidity"`
+	Ammonia     float64  `json:"ammonia"`
+	Timestamp   *float64 `json:"timestamp,omitempty"`
+}
+
+// RealtimeDecision is the condensed AI result used for WebSocket broadcasting
+type RealtimeDecision struct {
+	NodeID         string  `json:"node_id"`
+	Grade          string  `json:"grade"`
+	SprayerOn      bool    `json:"sprayer_on"`
+	SprayerReason  string  `json:"sprayer_reason"`
+	AnomalyVerdict string  `json:"anomaly_verdict"`
+	Confidence     float64 `json:"confidence"`
+}
+
 // HealthResponse from health check
 type HealthResponse struct {
 	Status  string `json:"status"`
