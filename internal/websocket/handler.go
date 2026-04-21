@@ -47,10 +47,12 @@ func NewHandler(hub *Hub, cfg *config.Config) *Handler {
 
 // ServeWS handles WebSocket requests
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
-	// Debug: log incoming headers to diagnose proxy issues
-	log.Printf("[WS] Incoming headers: Connection=%q, Upgrade=%q, Sec-WebSocket-Key=%q, Sec-WebSocket-Version=%q",
-		r.Header.Get("Connection"), r.Header.Get("Upgrade"),
-		r.Header.Get("Sec-WebSocket-Key"), r.Header.Get("Sec-WebSocket-Version"))
+	// Reject plain HTTP requests early with a clear 426 response.
+	// This prevents log noise from bots/health checks hitting the WS endpoint.
+	if !websocket.IsWebSocketUpgrade(r) {
+		http.Error(w, "426 Upgrade Required — connect with ws:// or wss://", http.StatusUpgradeRequired)
+		return
+	}
 
 	// Get user ID from context (set by auth middleware)
 	userID := ""
