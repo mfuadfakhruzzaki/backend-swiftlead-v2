@@ -61,6 +61,10 @@ services:
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
       - "traefik.http.services.backend.loadbalancer.server.port=8080"
+      # WebSocket: preserve Connection and Upgrade headers through Traefik
+      - "traefik.http.middlewares.backend-ws.headers.customRequestHeaders.Connection=keep-alive, Upgrade"
+      - "traefik.http.middlewares.backend-ws.headers.customRequestHeaders.Upgrade=websocket"
+      - "traefik.http.routers.backend.middlewares=backend-ws"
     networks:
       - dokploy-network
 
