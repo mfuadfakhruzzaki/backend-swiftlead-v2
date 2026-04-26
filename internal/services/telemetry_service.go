@@ -22,9 +22,12 @@ type TelemetryService struct {
 	aiClient      *ai.Client
 	cfg           *config.Config
 	wsHub         *websocket.Hub
+	audioSvc      *AudioService
 }
 
-// NewTelemetryService creates a new telemetry service
+// NewTelemetryService creates a new telemetry service.
+// audioSvc may be nil; when set, AI pump decisions are automatically actuated
+// and an auto-off timer is scheduled per cfg.PumpAutoOffSeconds.
 func NewTelemetryService(
 	nodeRepo repository.NodeRepository,
 	sensorRepo repository.SensorRepository,
@@ -33,6 +36,7 @@ func NewTelemetryService(
 	aiClient *ai.Client,
 	cfg *config.Config,
 	wsHub *websocket.Hub,
+	audioSvc *AudioService,
 ) *TelemetryService {
 	return &TelemetryService{
 		nodeRepo:      nodeRepo,
@@ -42,6 +46,7 @@ func NewTelemetryService(
 		aiClient:      aiClient,
 		cfg:           cfg,
 		wsHub:         wsHub,
+		audioSvc:      audioSvc,
 	}
 }
 
@@ -222,7 +227,44 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 				})
 			}
 
-			// 4. Node-level alert from multivariate anomaly verdict
+			// 4. Auto-actuate pump based on AI recommendation.
+			// Find all pump nodes for this RBW, compare desired vs current state,
+			// and issue MQTT commands only when a transition is needed.
+			if s.audioSvc != nil {
+				pumpNodes, pErr := s.nodeRepo.GetPumpNodesByRBW(aiCtx, rbwID)
+				if pErr != nil {
+					logger.Warn("AI auto-actuate: failed to get pump nodes for RBW %s: %v", rbwID, pErr)
+				} else {
+					for _, pumpNode := range pumpNodes {
+						if pumpNode.ESP32UID == nil || *pumpNode.ESP32UID == "" {
+							continue
+						}
+						currentlyOn := pumpNode.StatePump != nil && *pumpNode.StatePump
+						if decision.SprayerOn == currentlyOn {
+							continue // no state change needed
+						}
+						value := 0
+						if decision.SprayerOn {
+							value = 1
+						}
+						req := &models.PumpControlRequest{Action: "sprayer_set", Value: value}
+						if err := s.audioSvc.ControlPump(aiCtx, pumpNode.ID, req); err != nil {
+							logger.Error("AI auto-actuate pump failed: node=%s err=%v", pumpNode.ID, err)
+							continue
+						}
+						logger.Info("AI auto-actuated pump: node=%s sprayer_on=%v reason=%q",
+							pumpNode.ID, decision.SprayerOn, decision.SprayerReason)
+
+						// Schedule auto-off when turning on so the pump doesn't run indefinitely
+						if decision.SprayerOn && s.cfg.PumpAutoOffSeconds > 0 {
+							duration := time.Duration(s.cfg.PumpAutoOffSeconds * float64(time.Second))
+							s.audioSvc.ScheduleAutoOff(pumpNode.ID, *pumpNode.ESP32UID, duration)
+						}
+					}
+				}
+			}
+
+			// 6. Node-level alert from multivariate anomaly verdict
 			if decision.AnomalyVerdict == "anomaly" {
 				nid := nodeID
 				exists, _ := s.alertRepo.HasUnresolved(aiCtx, models.AlertTypeAIAnomaly, &nid, nil)

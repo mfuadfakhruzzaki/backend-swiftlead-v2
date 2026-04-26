@@ -100,23 +100,27 @@ func NewContainer(cfg *config.Config, db *sql.DB) *Container {
 	c.WSHandler = websocket.NewHandler(c.WSHub, cfg)
 	go c.WSHub.Run()
 
-	// Initialize services (with AI integration)
+	// Initialize services.
+	// Order matters: AudioService must be created before TelemetryService because
+	// TelemetryService holds a reference to AudioService for AI-driven pump actuation.
 	c.UserService = services.NewUserService(c.UserRepo, cfg.JWTSecret, cfg.JWTExpirationHours)
 	c.RBWService = services.NewRBWService(c.RBWRepo)
 	c.NodeService = services.NewNodeService(c.NodeRepo)
 	c.SensorService = services.NewSensorService(c.SensorRepo)
 	c.AlertService = services.NewAlertService(c.AlertRepo)
-	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, c.AI, cfg, c.WSHub)
+	c.AudioService = services.NewAudioService(c.MQTT, c.NodeRepo)
+	c.TelemetryService = services.NewTelemetryService(c.NodeRepo, c.SensorRepo, c.TelemetryRepo, c.AlertRepo, c.AI, cfg, c.WSHub, c.AudioService)
 	c.HarvestService = services.NewHarvestService(c.HarvestRepo, c.AI)
 	c.ServiceRequestService = services.NewServiceRequestService(c.ServiceRequestRepo)
 	c.TransactionService = services.NewTransactionService(c.TransactionRepo)
-	c.AudioService = services.NewAudioService(c.MQTT, c.NodeRepo)
 	c.SensorTrendCalculator = services.NewSensorTrendCalculator(c.TelemetryRepo)
 	c.NodeMonitorService = services.NewNodeMonitorService(c.NodeRepo, c.AlertRepo, c.WSHub, cfg)
 	c.NodeMonitorService.Start()
 
-	// Set MQTT handler
+	// Set MQTT handler and register the pump state-sync callback so hardware that
+	// restarts while the broker is unreachable re-converges on reconnect.
 	c.MQTT.SetHandler(c.TelemetryService.ProcessSensorPayload)
+	c.MQTT.SetStateSyncCallback(c.AudioService.SyncAllPumpStates)
 
 	// Initialize handlers
 	c.AuthHandler = handlers.NewAuthHandler(c.UserService)
