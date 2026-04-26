@@ -52,6 +52,11 @@ type Config struct {
 	AIEngineTimeout int
 	AIEngineEnabled bool
 
+	// Pump automation
+	// PumpAutoOffSeconds is the default duration (in seconds) before the pump is
+	// automatically turned off after an AI-triggered activation. 0 disables auto-off.
+	PumpAutoOffSeconds float64
+
 	// CORS
 	CORSAllowedOrigins   []string
 	CORSAllowedMethods   []string
@@ -112,6 +117,8 @@ func Load() *Config {
 		MQTTPassword:       getEnv("MQTT_PASSWORD", ""),
 		MQTTClientID:       getEnv("MQTT_CLIENT_ID", "swiftlet-backend"),
 		MQTTTopicPrefix:    getEnv("MQTT_TOPIC_PREFIX", "swiftlead/tel"),
+		// MQTTCmdPrefix is derived by convention: swiftlead/cmd/{esp32uid}/pump/set
+		// Each pump ESP32 must subscribe to its own subtopic under this prefix.
 		MQTTKeepAlive:      getEnvInt("MQTT_KEEPALIVE", 30),
 		MQTTConnectTimeout: getEnvInt("MQTT_CONNECT_TIMEOUT", 5),
 		MQTTUseTLS:         getEnvBool("MQTT_USE_TLS", false),
@@ -124,6 +131,9 @@ func Load() *Config {
 		AIEngineURL:     getEnv("AI_ENGINE_URL", "http://localhost:8000"),
 		AIEngineTimeout: getEnvInt("AI_ENGINE_TIMEOUT", 5),
 		AIEngineEnabled: getEnvBool("AI_ENGINE_ENABLED", false),
+
+		// Pump automation
+		PumpAutoOffSeconds: getEnvFloat("PUMP_AUTO_OFF_SECONDS", 300),
 
 		// CORS
 		CORSAllowedOrigins:   getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"*"}),

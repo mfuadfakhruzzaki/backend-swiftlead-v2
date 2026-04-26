@@ -31,6 +31,11 @@ type NodeRepository interface {
 	UpdateLastSeenByRBWAndTypes(ctx context.Context, rbwID string, nodeTypes []string) error
 	// ListStale returns nodes that are still marked online but have not reported since olderThan.
 	ListStale(ctx context.Context, olderThan time.Time) ([]*models.Node, error)
+	// GetPumpNodesByRBW returns all nodes with has_pump=true for a given RBW.
+	GetPumpNodesByRBW(ctx context.Context, rbwID string) ([]*models.Node, error)
+	// ListAllWithPump returns every installed node with has_pump=true across all RBWs.
+	// Used to re-sync pump states on MQTT reconnect.
+	ListAllWithPump(ctx context.Context) ([]*models.Node, error)
 }
 
 type nodeRepository struct {
@@ -251,6 +256,66 @@ func (r *nodeRepository) ListStale(ctx context.Context, olderThan time.Time) ([]
 		  AND uninstalled_at IS NULL
 	`
 	rows, err := r.db.QueryContext(ctx, query, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []*models.Node
+	for rows.Next() {
+		node := &models.Node{}
+		if err := rows.Scan(
+			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
+			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
+			&node.StateAudioNest, &node.HasPump, &node.StatePump,
+			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, rows.Err()
+}
+
+func (r *nodeRepository) GetPumpNodesByRBW(ctx context.Context, rbwID string) ([]*models.Node, error) {
+	query := `
+		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
+		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
+		       installed_at, uninstalled_at, created_at, updated_at
+		FROM nodes
+		WHERE rbw_id = $1 AND has_pump = true AND uninstalled_at IS NULL
+	`
+	rows, err := r.db.QueryContext(ctx, query, rbwID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []*models.Node
+	for rows.Next() {
+		node := &models.Node{}
+		if err := rows.Scan(
+			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
+			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
+			&node.StateAudioNest, &node.HasPump, &node.StatePump,
+			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, rows.Err()
+}
+
+func (r *nodeRepository) ListAllWithPump(ctx context.Context) ([]*models.Node, error) {
+	query := `
+		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
+		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
+		       installed_at, uninstalled_at, created_at, updated_at
+		FROM nodes
+		WHERE has_pump = true AND uninstalled_at IS NULL
+	`
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
@@ -22,9 +24,11 @@ type MessageHandler func(ctx context.Context, payload *models.SensorPayload) err
 
 // Client wraps the Paho MQTT client
 type Client struct {
-	client  pahomqtt.Client
-	cfg     *config.Config
-	handler MessageHandler
+	client      pahomqtt.Client
+	cfg         *config.Config
+	handler     MessageHandler
+	mu          sync.RWMutex
+	stateSyncFn func() // invoked in a goroutine on every (re)connect to re-sync actuator states
 }
 
 // NewClient creates a new MQTT client
@@ -37,6 +41,15 @@ func NewClient(cfg *config.Config) *Client {
 // SetHandler sets the message handler for incoming sensor data
 func (c *Client) SetHandler(handler MessageHandler) {
 	c.handler = handler
+}
+
+// SetStateSyncCallback registers a function that is called (in a goroutine) after
+// every successful (re)connect so that actuator desired-states can be re-published
+// to hardware that may have restarted while the broker was unreachable.
+func (c *Client) SetStateSyncCallback(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stateSyncFn = fn
 }
 
 // Connect establishes connection to the MQTT broker
@@ -113,13 +126,22 @@ func (c *Client) PublishAudioCommand(action string, value int) error {
 	return c.Publish("swiftlead/cmd/lmb/set", payload)
 }
 
-// PublishPumpCommand publishes a pump control command
-func (c *Client) PublishPumpCommand(value int) error {
+// PublishPumpCommand publishes a pump control command to the specific ESP32 identified
+// by esp32UID. The topic is swiftlead/cmd/<NORMALIZED_UID>/pump/set so that each
+// pump node subscribes only to its own subtopic, preventing broadcast collisions in
+// multi-RBW deployments.
+//
+// Firmware migration note: each pump ESP32 must subscribe to
+//   swiftlead/cmd/<OWN_UID>/pump/set
+// where OWN_UID is the upper-cased MAC without colons (e.g. AABBCCDDEEFF).
+func (c *Client) PublishPumpCommand(esp32UID string, value int) error {
+	normalized := strings.ToUpper(strings.ReplaceAll(esp32UID, ":", ""))
+	topic := "swiftlead/cmd/" + normalized + "/pump/set"
 	payload := map[string]interface{}{
 		"action": "sprayer_set",
 		"value":  value,
 	}
-	return c.Publish("swiftlead/cmd/pump/set", payload)
+	return c.Publish(topic, payload)
 }
 
 // newTLSConfig creates a TLS configuration for the MQTT connection.
@@ -174,6 +196,15 @@ func (c *Client) onConnect(client pahomqtt.Client) {
 	metrics.MQTTConnectionStatus.Set(1)
 	if err := c.Subscribe(); err != nil {
 		logger.Error("Failed to subscribe: %v", err)
+	}
+
+	// Re-publish desired actuator states so hardware that restarted while we were
+	// disconnected converges to the correct state.
+	c.mu.RLock()
+	fn := c.stateSyncFn
+	c.mu.RUnlock()
+	if fn != nil {
+		go fn()
 	}
 }
 
