@@ -231,18 +231,37 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 			// Skipped entirely when pump_auto_mode = false (manual override active).
 			// Only issues an MQTT command when the desired state differs from the
 			// current state to avoid redundant commands.
+			//
+			// Race-condition note: GetPumpNodesByRBW is called after DecideRealtime
+			// which can take several seconds. A manual override (pump_auto_mode=false)
+			// issued during that window would not be visible in pumpNode. To close
+			// this race, each node is re-read individually with GetByID right before
+			// actuation — the window is now effectively zero (two consecutive statements).
 			if s.audioSvc != nil {
 				pumpNodes, pErr := s.nodeRepo.GetPumpNodesByRBW(aiCtx, rbwID)
 				if pErr != nil {
 					logger.Warn("AI auto-actuate: failed to get pump nodes for RBW %s: %v", rbwID, pErr)
 				} else {
 					for _, pumpNode := range pumpNodes {
-						// Respect manual override — skip if AI automation is suspended
+						// First pass: skip obvious non-candidates without an extra DB round trip
 						if !pumpNode.PumpAutoMode {
 							logger.Debug("AI auto-actuate skipped: node=%s is in manual mode", pumpNode.ID)
 							continue
 						}
-						currentlyOn := pumpNode.StatePump != nil && *pumpNode.StatePump
+
+						// Fresh read — eliminates the race between GetPumpNodesByRBW
+						// (pre-DecideRealtime) and a manual override that arrived during AI latency.
+						fresh, err := s.nodeRepo.GetByID(aiCtx, pumpNode.ID)
+						if err != nil {
+							logger.Warn("AI auto-actuate: fresh read failed: node=%s err=%v", pumpNode.ID, err)
+							continue
+						}
+						if !fresh.PumpAutoMode {
+							logger.Debug("AI auto-actuate skipped (fresh): node=%s manual override active", pumpNode.ID)
+							continue
+						}
+
+						currentlyOn := fresh.StatePump != nil && *fresh.StatePump
 						if decision.SprayerOn == currentlyOn {
 							continue // no state change needed
 						}
