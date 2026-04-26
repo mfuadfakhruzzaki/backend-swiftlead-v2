@@ -21,7 +21,19 @@ type pumpScheduler struct {
 	cancels map[string]context.CancelFunc
 }
 
-func (s *pumpScheduler) schedule(nodeID string, duration time.Duration, mqttClient *mqtt.Client, nodeRepo repository.NodeRepository) {
+// pumpKeepAliveInterval is how often the keep-alive loop re-sends pump=1.
+// Must be shorter than the firmware's GW_CTRL_LOOP_MS (2 s) so the backend
+// re-asserts the desired state before the firmware's autonomous controller
+// can override it.
+const pumpKeepAliveInterval = 1500 * time.Millisecond
+
+// schedule arms an auto-off timer for nodeID.
+// When keepAlive is true the goroutine also re-sends pump=1 every
+// pumpKeepAliveInterval until the deadline, preventing the gateway
+// firmware's autonomous RH controller from overriding a manual command.
+// When keepAlive is false a single turn-off fires after duration (used by
+// AI auto-actuation, which self-corrects on the next telemetry cycle).
+func (s *pumpScheduler) schedule(nodeID string, duration time.Duration, keepAlive bool, mqttClient *mqtt.Client, nodeRepo repository.NodeRepository) {
 	s.mu.Lock()
 	if cancel, ok := s.cancels[nodeID]; ok {
 		cancel()
@@ -31,26 +43,59 @@ func (s *pumpScheduler) schedule(nodeID string, duration time.Duration, mqttClie
 	s.mu.Unlock()
 
 	go func() {
+		if keepAlive {
+			s.keepAliveLoop(ctx, nodeID, duration, mqttClient, nodeRepo)
+		} else {
+			s.simpleTimer(ctx, nodeID, duration, mqttClient, nodeRepo)
+		}
+	}()
+}
+
+func (s *pumpScheduler) simpleTimer(ctx context.Context, nodeID string, duration time.Duration, mqttClient *mqtt.Client, nodeRepo repository.NodeRepository) {
+	select {
+	case <-time.After(duration):
+	case <-ctx.Done():
+		return
+	}
+	s.fireAutoOff(nodeID, mqttClient, nodeRepo)
+}
+
+// keepAliveLoop periodically re-sends pump=1 until deadline, then turns off.
+func (s *pumpScheduler) keepAliveLoop(ctx context.Context, nodeID string, duration time.Duration, mqttClient *mqtt.Client, nodeRepo repository.NodeRepository) {
+	deadline := time.Now().Add(duration)
+	ticker := time.NewTicker(pumpKeepAliveInterval)
+	defer ticker.Stop()
+
+	for {
 		select {
-		case <-time.After(duration):
 		case <-ctx.Done():
 			return
+		case t := <-ticker.C:
+			if !t.Before(deadline) {
+				s.fireAutoOff(nodeID, mqttClient, nodeRepo)
+				return
+			}
+			if err := mqttClient.PublishPumpCommand(1); err != nil {
+				logger.Warn("Pump keep-alive publish failed for node %s: %v", nodeID, err)
+			}
 		}
+	}
+}
 
-		s.mu.Lock()
-		delete(s.cancels, nodeID)
-		s.mu.Unlock()
+func (s *pumpScheduler) fireAutoOff(nodeID string, mqttClient *mqtt.Client, nodeRepo repository.NodeRepository) {
+	s.mu.Lock()
+	delete(s.cancels, nodeID)
+	s.mu.Unlock()
 
-		if err := mqttClient.PublishPumpCommand(0); err != nil {
-			logger.Error("Pump auto-off MQTT publish failed for node %s: %v", nodeID, err)
-		}
-		offCtx, offCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer offCancel()
-		if err := nodeRepo.UpdatePumpState(offCtx, nodeID, false); err != nil {
-			logger.Warn("Pump auto-off DB update failed for node %s: %v", nodeID, err)
-		}
-		logger.Info("Pump auto-off fired: node=%s", nodeID)
-	}()
+	if err := mqttClient.PublishPumpCommand(0); err != nil {
+		logger.Error("Pump auto-off MQTT publish failed for node %s: %v", nodeID, err)
+	}
+	offCtx, offCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer offCancel()
+	if err := nodeRepo.UpdatePumpState(offCtx, nodeID, false); err != nil {
+		logger.Warn("Pump auto-off DB update failed for node %s: %v", nodeID, err)
+	}
+	logger.Info("Pump auto-off fired: node=%s", nodeID)
 }
 
 func (s *pumpScheduler) cancel(nodeID string) {
@@ -164,9 +209,11 @@ func (s *AudioService) ControlPump(ctx context.Context, nodeID string, req *mode
 	}
 
 	// Schedule auto-off timer if a duration was requested and we're turning on.
+	// keepAlive=true: periodically re-sends pump=1 so the gateway firmware's
+	// autonomous RH controller cannot override the manual command mid-timer.
 	if state && req.DurationSeconds != nil && *req.DurationSeconds > 0 {
 		duration := time.Duration(*req.DurationSeconds * float64(time.Second))
-		s.scheduler.schedule(nodeID, duration, s.mqtt, s.nodeRepo)
+		s.scheduler.schedule(nodeID, duration, true, s.mqtt, s.nodeRepo)
 		logger.Info("Pump manual timer set: node=%s duration=%.0fs", nodeID, *req.DurationSeconds)
 	}
 
@@ -192,7 +239,9 @@ func (s *AudioService) ScheduleAutoOff(nodeID string, duration time.Duration) {
 		return
 	}
 	logger.Info("Pump auto-off scheduled: node=%s duration=%s", nodeID, duration)
-	s.scheduler.schedule(nodeID, duration, s.mqtt, s.nodeRepo)
+	// keepAlive=false: AI self-corrects via the next telemetry cycle; no need
+	// to fight the firmware's RH controller when AI is in charge.
+	s.scheduler.schedule(nodeID, duration, false, s.mqtt, s.nodeRepo)
 }
 
 // SyncAllPumpStates re-publishes the desired pump state for every pump-capable node.
