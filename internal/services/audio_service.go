@@ -187,6 +187,21 @@ func (s *AudioService) SetPumpAutoMode(ctx context.Context, nodeID string, autoM
 	return nil
 }
 
+// ControlPumpAI is the AI-only variant of ControlPump.
+// It re-reads pump_auto_mode inside the service right before touching any timer so
+// a manual override that arrived after the caller's last DB snapshot is respected.
+// Returns nil (no-op) when manual mode is active rather than cancelling the manual timer.
+func (s *AudioService) ControlPumpAI(ctx context.Context, nodeID string, req *models.PumpControlRequest) error {
+	node, err := s.nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		return err
+	}
+	if !node.PumpAutoMode {
+		return nil // manual override active — leave manual timer untouched
+	}
+	return s.ControlPump(ctx, nodeID, req)
+}
+
 // ScheduleAutoOff arranges for the pump on nodeID to be turned off after duration.
 // Any previously scheduled auto-off for the same node is cancelled first.
 // Calling with duration ≤ 0 is a no-op.

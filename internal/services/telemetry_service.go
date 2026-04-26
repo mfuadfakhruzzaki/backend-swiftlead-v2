@@ -196,7 +196,7 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 		hub := s.wsHub
 
 		go func() {
-			aiCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			aiCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			// 1. Push to rolling buffer (enables 1-hour rolling features for /v2/decide)
@@ -270,7 +270,7 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 							value = 1
 						}
 						req := &models.PumpControlRequest{Action: "sprayer_set", Value: value}
-						if err := s.audioSvc.ControlPump(aiCtx, pumpNode.ID, req); err != nil {
+						if err := s.audioSvc.ControlPumpAI(aiCtx, pumpNode.ID, req); err != nil {
 							logger.Error("AI auto-actuate pump failed: node=%s err=%v", pumpNode.ID, err)
 							continue
 						}
