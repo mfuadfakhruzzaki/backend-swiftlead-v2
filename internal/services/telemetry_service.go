@@ -228,15 +228,18 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 			}
 
 			// 4. Auto-actuate pump based on AI recommendation.
-			// Find all pump nodes for this RBW, compare desired vs current state,
-			// and issue MQTT commands only when a transition is needed.
+			// Skipped entirely when pump_auto_mode = false (manual override active).
+			// Only issues an MQTT command when the desired state differs from the
+			// current state to avoid redundant commands.
 			if s.audioSvc != nil {
 				pumpNodes, pErr := s.nodeRepo.GetPumpNodesByRBW(aiCtx, rbwID)
 				if pErr != nil {
 					logger.Warn("AI auto-actuate: failed to get pump nodes for RBW %s: %v", rbwID, pErr)
 				} else {
 					for _, pumpNode := range pumpNodes {
-						if pumpNode.ESP32UID == nil || *pumpNode.ESP32UID == "" {
+						// Respect manual override — skip if AI automation is suspended
+						if !pumpNode.PumpAutoMode {
+							logger.Debug("AI auto-actuate skipped: node=%s is in manual mode", pumpNode.ID)
 							continue
 						}
 						currentlyOn := pumpNode.StatePump != nil && *pumpNode.StatePump
@@ -258,7 +261,7 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 						// Schedule auto-off when turning on so the pump doesn't run indefinitely
 						if decision.SprayerOn && s.cfg.PumpAutoOffSeconds > 0 {
 							duration := time.Duration(s.cfg.PumpAutoOffSeconds * float64(time.Second))
-							s.audioSvc.ScheduleAutoOff(pumpNode.ID, *pumpNode.ESP32UID, duration)
+							s.audioSvc.ScheduleAutoOff(pumpNode.ID, duration)
 						}
 					}
 				}

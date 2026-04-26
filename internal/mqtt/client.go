@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -126,22 +125,16 @@ func (c *Client) PublishAudioCommand(action string, value int) error {
 	return c.Publish("swiftlead/cmd/lmb/set", payload)
 }
 
-// PublishPumpCommand publishes a pump control command to the specific ESP32 identified
-// by esp32UID. The topic is swiftlead/cmd/<NORMALIZED_UID>/pump/set so that each
-// pump node subscribes only to its own subtopic, preventing broadcast collisions in
-// multi-RBW deployments.
-//
-// Firmware migration note: each pump ESP32 must subscribe to
-//   swiftlead/cmd/<OWN_UID>/pump/set
-// where OWN_UID is the upper-cased MAC without colons (e.g. AABBCCDDEEFF).
-func (c *Client) PublishPumpCommand(esp32UID string, value int) error {
-	normalized := strings.ToUpper(strings.ReplaceAll(esp32UID, ":", ""))
-	topic := "swiftlead/cmd/" + normalized + "/pump/set"
+// PublishPumpCommand publishes a pump control command.
+// The gateway subscribes to swiftlead/cmd/# and routes the command via ESP-NOW
+// to the pump node. Per-gateway isolation requires a firmware update; for now
+// the broadcast topic is sufficient for single-RBW deployments.
+func (c *Client) PublishPumpCommand(value int) error {
 	payload := map[string]interface{}{
 		"action": "sprayer_set",
 		"value":  value,
 	}
-	return c.Publish(topic, payload)
+	return c.Publish("swiftlead/cmd/pump/set", payload)
 }
 
 // newTLSConfig creates a TLS configuration for the MQTT connection.

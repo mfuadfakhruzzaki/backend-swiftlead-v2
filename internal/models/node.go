@@ -16,6 +16,8 @@ type Node struct {
 	StateAudioNest *bool      `json:"state_audio_nest,omitempty"`
 	HasPump        bool       `json:"has_pump"`
 	StatePump      *bool      `json:"state_pump,omitempty"`
+	// PumpAutoMode: true = AI controls pump; false = manual override (AI suspended)
+	PumpAutoMode   bool       `json:"pump_auto_mode"`
 	InstalledAt    *time.Time `json:"installed_at,omitempty"`
 	UninstalledAt  *time.Time `json:"uninstalled_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -62,6 +64,12 @@ type AudioControlRequest struct {
 
 // PumpControlRequest for controlling pump
 type PumpControlRequest struct {
-	Action string `json:"action"` // sprayer_set
-	Value  int    `json:"value"`  // 0 or 1
+	Action          string   `json:"action"`                     // sprayer_set
+	Value           int      `json:"value"`                      // 0 or 1
+	DurationSeconds *float64 `json:"duration_seconds,omitempty"` // auto-off timer (seconds); only valid when value=1
+}
+
+// PumpModeRequest for toggling AI automation on a pump node
+type PumpModeRequest struct {
+	AutoMode bool `json:"auto_mode"` // true = AI controls; false = manual override
 }

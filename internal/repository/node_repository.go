@@ -36,6 +36,8 @@ type NodeRepository interface {
 	// ListAllWithPump returns every installed node with has_pump=true across all RBWs.
 	// Used to re-sync pump states on MQTT reconnect.
 	ListAllWithPump(ctx context.Context) ([]*models.Node, error)
+	// UpdatePumpAutoMode sets the pump_auto_mode flag (true = AI; false = manual override).
+	UpdatePumpAutoMode(ctx context.Context, id string, autoMode bool) error
 }
 
 type nodeRepository struct {
@@ -64,7 +66,7 @@ func (r *nodeRepository) GetByID(ctx context.Context, id string) (*models.Node, 
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes WHERE id = $1
 	`
 	node := &models.Node{}
@@ -72,7 +74,7 @@ func (r *nodeRepository) GetByID(ctx context.Context, id string) (*models.Node, 
 		&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 		&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 		&node.StateAudioNest, &node.HasPump, &node.StatePump,
-		&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNodeNotFound
@@ -90,7 +92,7 @@ func (r *nodeRepository) GetByESP32UID(ctx context.Context, esp32UID string) (*m
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes 
 		WHERE REPLACE(esp32_uid, ':', '') = $1 OR esp32_uid = $2
 	`
@@ -99,7 +101,7 @@ func (r *nodeRepository) GetByESP32UID(ctx context.Context, esp32UID string) (*m
 		&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 		&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 		&node.StateAudioNest, &node.HasPump, &node.StatePump,
-		&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNodeNotFound
@@ -151,7 +153,7 @@ func (r *nodeRepository) ListByRBW(ctx context.Context, rbwID string, limit, off
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes 
 		WHERE rbw_id = $1
 		ORDER BY created_at DESC
@@ -169,7 +171,7 @@ func (r *nodeRepository) ListByRBW(ctx context.Context, rbwID string, limit, off
 			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 			&node.StateAudioNest, &node.HasPump, &node.StatePump,
-			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+			&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -195,7 +197,7 @@ func (r *nodeRepository) GetGatewayByRBW(ctx context.Context, rbwID string) (*mo
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes
 		WHERE rbw_id = $1 AND node_type = 'gateway'
 		LIMIT 1
@@ -205,7 +207,7 @@ func (r *nodeRepository) GetGatewayByRBW(ctx context.Context, rbwID string) (*mo
 		&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 		&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 		&node.StateAudioNest, &node.HasPump, &node.StatePump,
-		&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+		&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil // No gateway registered for this RBW
@@ -248,7 +250,7 @@ func (r *nodeRepository) ListStale(ctx context.Context, olderThan time.Time) ([]
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes
 		WHERE status_node = 'online'
 		  AND last_seen IS NOT NULL
@@ -268,7 +270,7 @@ func (r *nodeRepository) ListStale(ctx context.Context, olderThan time.Time) ([]
 			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 			&node.StateAudioNest, &node.HasPump, &node.StatePump,
-			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+			&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -281,7 +283,7 @@ func (r *nodeRepository) GetPumpNodesByRBW(ctx context.Context, rbwID string) ([
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes
 		WHERE rbw_id = $1 AND has_pump = true AND uninstalled_at IS NULL
 	`
@@ -298,7 +300,7 @@ func (r *nodeRepository) GetPumpNodesByRBW(ctx context.Context, rbwID string) ([
 			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 			&node.StateAudioNest, &node.HasPump, &node.StatePump,
-			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+			&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -307,11 +309,17 @@ func (r *nodeRepository) GetPumpNodesByRBW(ctx context.Context, rbwID string) ([
 	return nodes, rows.Err()
 }
 
+func (r *nodeRepository) UpdatePumpAutoMode(ctx context.Context, id string, autoMode bool) error {
+	query := `UPDATE nodes SET pump_auto_mode = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, autoMode, id)
+	return err
+}
+
 func (r *nodeRepository) ListAllWithPump(ctx context.Context) ([]*models.Node, error) {
 	query := `
 		SELECT id, rbw_id, node_type, node_code, esp32_uid, status_node, last_seen,
 		       has_audio, state_audio_lmb, state_audio_nest, has_pump, state_pump,
-		       installed_at, uninstalled_at, created_at, updated_at
+		       pump_auto_mode, installed_at, uninstalled_at, created_at, updated_at
 		FROM nodes
 		WHERE has_pump = true AND uninstalled_at IS NULL
 	`
@@ -328,7 +336,7 @@ func (r *nodeRepository) ListAllWithPump(ctx context.Context) ([]*models.Node, e
 			&node.ID, &node.RBWID, &node.NodeType, &node.NodeCode, &node.ESP32UID,
 			&node.StatusNode, &node.LastSeen, &node.HasAudio, &node.StateAudioLMB,
 			&node.StateAudioNest, &node.HasPump, &node.StatePump,
-			&node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
+			&node.PumpAutoMode, &node.InstalledAt, &node.UninstalledAt, &node.CreatedAt, &node.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

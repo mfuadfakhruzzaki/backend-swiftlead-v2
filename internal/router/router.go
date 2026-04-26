@@ -97,6 +97,7 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Get("/{node_id}/audio", c.AudioHandler.GetAudioState)
 				r.Patch("/{node_id}/audio", c.AudioHandler.ControlAudio)
 				r.Patch("/{node_id}/pump", c.AudioHandler.ControlPump)
+				r.Patch("/{node_id}/pump/mode", c.AudioHandler.TogglePumpMode)
 
 				// AI endpoints using real-time sensor data from DB (no body needed)
 				r.Post("/{node_id}/ai/analyze", c.AIHandler.AnalyzeNode)
