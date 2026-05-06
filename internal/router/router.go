@@ -188,6 +188,7 @@ func SetupRoutes(r *chi.Mux, cfg *config.Config, c *app.Container) {
 				r.Use(auth.RequireRole(models.RoleAdmin))
 				r.Get("/users", c.UserHandler.List)
 				r.Post("/users", c.UserHandler.Create)
+				r.Delete("/users/{id}", c.UserHandler.Delete)
 				r.Post("/auth/admin/register", c.AuthHandler.Register)
 				r.Post("/auth/forgot-password", c.AuthHandler.ForgotPassword)
 
