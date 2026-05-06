@@ -46,7 +46,7 @@ func NewMinIOClient(cfg *config.Config) (*MinIOClient, error) {
 	return mc, nil
 }
 
-// ensureBucket creates the bucket if it doesn't exist
+// ensureBucket creates the bucket if it doesn't exist and sets public-read policy
 func (m *MinIOClient) ensureBucket(ctx context.Context) error {
 	exists, err := m.client.BucketExists(ctx, m.bucket)
 	if err != nil {
@@ -58,6 +58,24 @@ func (m *MinIOClient) ensureBucket(ctx context.Context) error {
 			return fmt.Errorf("failed to create bucket: %w", err)
 		}
 		logger.Info("Created MinIO bucket: %s", m.bucket)
+	}
+
+	// Allow public GET for uploaded assets so browsers can load images directly
+	policy := fmt.Sprintf(`{
+		"Version":"2012-10-17",
+		"Statement":[{
+			"Effect":"Allow",
+			"Principal":{"AWS":["*"]},
+			"Action":["s3:GetObject"],
+			"Resource":[
+				"arn:aws:s3:::%s/avatars/*",
+				"arn:aws:s3:::%s/rbw/*"
+			]
+		}]
+	}`, m.bucket, m.bucket)
+
+	if err := m.client.SetBucketPolicy(ctx, m.bucket, policy); err != nil {
+		logger.Info("Warning: failed to set public-read bucket policy (avatars may not load in browser): %v", err)
 	}
 
 	return nil

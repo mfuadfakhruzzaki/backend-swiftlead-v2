@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/swiftlead/backend-swiftlet/internal/auth"
 	"github.com/swiftlead/backend-swiftlet/internal/models"
 	"github.com/swiftlead/backend-swiftlet/internal/repository"
@@ -290,6 +291,28 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Created(w, "User created", user.ToResponse())
+}
+
+// Delete handles DELETE /users/{id} (admin only)
+func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	claims := auth.GetUserFromContext(r.Context())
+	if claims != nil && claims.UserID == id {
+		response.BadRequest(w, "Cannot delete your own account")
+		return
+	}
+
+	if err := h.userService.Delete(r.Context(), id); err != nil {
+		if err == repository.ErrUserNotFound {
+			response.NotFound(w, "User not found")
+		} else {
+			response.InternalError(w, "Failed to delete user")
+		}
+		return
+	}
+
+	response.Success(w, "User deleted", nil)
 }
 
 // Helper to get pagination params
