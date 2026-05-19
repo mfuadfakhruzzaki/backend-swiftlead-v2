@@ -67,8 +67,9 @@ func (h *AudioHandler) GetAudioState(w http.ResponseWriter, r *http.Request) {
 
 // ControlPump handles PATCH /nodes/{node_id}/pump
 // Body: {"action":"sprayer_set","value":0|1,"duration_seconds":N}
-// Sending any manual command automatically disables AI automation (pump_auto_mode=false).
-// Use PATCH /nodes/{node_id}/pump/mode to re-enable AI control.
+// Requires pump to be in manual mode (pump_auto_mode=false).
+// If AI mode is active, returns 409 Conflict — user must disable AI mode first
+// via PATCH /nodes/{node_id}/pump/mode.
 func (h *AudioHandler) ControlPump(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "node_id")
 
@@ -78,14 +79,18 @@ func (h *AudioHandler) ControlPump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Manual control suspends AI automation so the AI doesn't immediately undo
-	// the user's action. User must call /pump/mode to re-enable.
-	if err := h.audioService.SetPumpAutoMode(r.Context(), nodeID, false); err != nil {
+	// Check if pump is in AI mode — reject manual commands if so
+	node, err := h.audioService.GetPumpNode(r.Context(), nodeID)
+	if err != nil {
 		if err == repository.ErrNodeNotFound {
 			response.NotFound(w, "Node not found")
 		} else {
 			response.InternalError(w, err.Error())
 		}
+		return
+	}
+	if node.PumpAutoMode {
+		response.Conflict(w, "Pump is in AI mode. Disable AI mode first via PATCH /nodes/{node_id}/pump/mode")
 		return
 	}
 
