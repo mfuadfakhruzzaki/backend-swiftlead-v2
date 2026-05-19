@@ -135,6 +135,19 @@ func (s *AudioService) GetAudioState(ctx context.Context, nodeID string) (*model
 	return node, nil
 }
 
+// GetPumpNode retrieves a node and validates it has pump capability.
+// Used by handlers to check pump_auto_mode before issuing manual commands.
+func (s *AudioService) GetPumpNode(ctx context.Context, nodeID string) (*models.Node, error) {
+	node, err := s.nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	if !node.HasPump {
+		return nil, fmt.Errorf("node %s does not have pump capability", nodeID)
+	}
+	return node, nil
+}
+
 // ControlPump sends a pump command to a node via MQTT and updates DB state.
 // It cancels any pending auto-off timer before sending.
 // If req.DurationSeconds > 0 and req.Value == 1, a new auto-off timer is scheduled.
