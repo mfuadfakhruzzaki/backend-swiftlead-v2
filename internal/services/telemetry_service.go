@@ -277,8 +277,12 @@ func (s *TelemetryService) ProcessSensorPayload(ctx context.Context, payload *mo
 						logger.Info("AI auto-actuated pump: node=%s sprayer_on=%v reason=%q",
 							pumpNode.ID, decision.SprayerOn, decision.SprayerReason)
 
-						// Schedule auto-off when turning on so the pump doesn't run indefinitely
-						if decision.SprayerOn && s.cfg.PumpAutoOffSeconds > 0 {
+						// Schedule auto-off when turning on so the pump doesn't run indefinitely.
+						// Only schedule if AI mode is active (fresh.PumpAutoMode == true),
+						// meaning ControlPumpAI actually actuated. When manual mode is active,
+						// ControlPumpAI returns nil (no-op) and we must NOT touch the scheduler
+						// to avoid overwriting the user's manual timer.
+						if fresh.PumpAutoMode && decision.SprayerOn && s.cfg.PumpAutoOffSeconds > 0 {
 							duration := time.Duration(s.cfg.PumpAutoOffSeconds * float64(time.Second))
 							s.audioSvc.ScheduleAutoOff(pumpNode.ID, duration)
 						}
