@@ -1,4 +1,7 @@
-# Binaries
+# Binaries & Executables
+api
+swiftlead-backend
+backend
 *.exe
 *.exe~
 *.dll
@@ -6,6 +9,7 @@
 *.dylib
 bin/
 build/
+dist/*.tar
 
 # Go specific
 *.test
@@ -16,48 +20,50 @@ go.work.sum
 # Dependency directories
 vendor/
 
-# IDE & Editor
+# IDE, Editors & OS
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
 .DS_Store
+*/.DS_Store
+**/.DS_Store
 
 # Environment files
 .env
-.env.local
-.env.production
-.env.*.local
+.env.*
+!.env.example
+!.env.prod.example
+!.env.*.example
 
 # Logs
 *.log
 logs/
 
-# Coverage
+# Coverage & Profiling
 coverage.out
 coverage.html
+*.prof
+*.pprof
 
-# Temporary files
+# Temporary files & Archives
 tmp/
 temp/
 *.tmp
 *.bak
+*.tar
+*.tar.gz
+*.zip
 
-# Docker
+# Docker & Local Data Mounts
 docker-compose.override.yml
-
-# MinIO data (local development)
 minio_data/
-
-# Mosquitto data (local development)
 mosquitto_data/
-
-# Prometheus data (local development)
 prometheus_data/
-
-# Grafana data (local development)
 grafana_data/
+postgres_data/
 
 # Database dumps
 *.sql.gz
@@ -66,7 +72,10 @@ grafana_data/
 # Secrets & Keys
 *.pem
 *.key
+*.csr
+*.crt.srl
 secrets/
+docker/nginx/ssl/
 
 # Air (hot reload)
 .air.toml

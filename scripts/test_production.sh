@@ -782,7 +782,9 @@ else
 fi
 
 # Write detailed report
-REPORT_FILE="/Users/muhammadfakhruzzaki/projects/backend-swiftlead-v2/TEST_REPORT.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPORT_FILE="${REPORT_FILE:-$PROJECT_ROOT/TEST_REPORT.md}"
 cat > "$REPORT_FILE" << ENDOFFILE
 # SwiftLead API - Production Endpoint Test Report
 

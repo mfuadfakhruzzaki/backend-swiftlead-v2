@@ -32,7 +32,7 @@ lint:
 
 # Clean
 clean:
-	rm -rf bin/ coverage.out coverage.html
+	rm -rf bin/ coverage.out coverage.html api swiftlead-backend backend
 
 # Database migrate
 migrate:
