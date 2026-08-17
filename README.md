@@ -41,24 +41,24 @@
 
 ```mermaid
 graph TD
-    subgraph IoT Edge
-        Node1[Gateway ESP32 Node] -->|MQTT / TLS| Mosquitto[Mosquitto Broker]
-        Node2[Sensor / Actuator Node] -->|MQTT / TLS| Mosquitto
+    subgraph "IoT Edge Layer"
+        Node1["Gateway ESP32 Node"] -->|"MQTT / TLS"| Mosquitto["Mosquitto Broker"]
+        Node2["Sensor / Actuator Node"] -->|"MQTT / TLS"| Mosquitto
     end
 
-    subgraph Backend Core
-        Mosquitto -->|Telemetry Ingestion| GoAPI[SwiftLead Go Backend API]
-        GoAPI -->|Pub/Sub Control| Mosquitto
-        GoAPI -->|Relational & Time-Series| DB[(PostgreSQL + TimescaleDB)]
-        GoAPI -->|Object Storage| MinIO[(MinIO S3)]
-        GoAPI -->|Inference & Anomaly| AIEngine[AI Engine Service]
+    subgraph "Backend Core"
+        Mosquitto -->|"Telemetry Ingestion"| GoAPI["SwiftLead Go Backend API"]
+        GoAPI -->|"Pub/Sub Control"| Mosquitto
+        GoAPI -->|"Relational & Time-Series"| DB[("PostgreSQL + TimescaleDB")]
+        GoAPI -->|"Object Storage"| MinIO[("MinIO S3")]
+        GoAPI -->|"Inference & Anomaly"| AIEngine["AI Engine Service"]
     end
 
-    subgraph Client & Observability
-        GoAPI -->|WebSocket Stream| WebClient[Web / Mobile Dashboard]
-        GoAPI -->|REST API (HTTPS)| WebClient
-        GoAPI -->|Metrics Endpoint| Prometheus[Prometheus]
-        Prometheus --> Grafana[Grafana Dashboard]
+    subgraph "Client & Observability"
+        GoAPI -->|"WebSocket Stream"| WebClient["Web / Mobile Dashboard"]
+        GoAPI -->|"REST API HTTPS"| WebClient
+        GoAPI -->|"Metrics Endpoint"| Prometheus["Prometheus"]
+        Prometheus --> Grafana["Grafana Dashboard"]
     end
 ```
 
