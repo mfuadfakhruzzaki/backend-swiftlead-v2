@@ -1,6 +1,7 @@
 # 🏗️ SwiftLead Backend (v2)
 
 [![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat&logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=flat&logo=docker)](https://www.docker.com)
 [![TimescaleDB](https://img.shields.io/badge/TimescaleDB-PostgreSQL-FDB515?style=flat&logo=postgresql)](https://www.timescale.com)
 [![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-660066?style=flat&logo=eclipsemosquitto)](https://mosquitto.org)
@@ -183,6 +184,8 @@ k6 run loadtest/stress_test.js
 
 ---
 
-## 📄 License
+## 📄 License & Copyright
 
-This project is licensed under the [MIT License](LICENSE) (or as specified by project maintainers).
+Copyright (c) 2026 Muhammad Fuad Fakhruzzaki. All Rights Reserved.
+
+This repository is **proprietary** and made publicly visible strictly for portfolio, showcase, and evaluation purposes. Unauthorized copying, distribution, modification, or commercial use of this codebase is strictly prohibited. See the [LICENSE](LICENSE) file for details.
