@@ -94,19 +94,13 @@ graph TD
    cd backend-swiftlead-v2
    ```
 
-2. **Configure Environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   *(Review `.env` and adjust passwords if needed)*
-
-3. **Start all services:**
+2. **Start all services:**
    ```bash
    make docker-up
    # or: docker-compose up -d
    ```
 
-4. **Verify Health:**
+3. **Verify Health:**
    ```bash
    curl http://localhost:8080/health
    ```
